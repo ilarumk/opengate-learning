@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Emergency City — Save the Day!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #000; overflow: hidden; height: 100vh; }
+  canvas { display: block; background: #81C784; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  #title {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    color: white; font-size: 22px; font-weight: 800;
+    background: linear-gradient(135deg, #D32F2F, #F57C00, #FBC02D);
+    padding: 10px 26px; border-radius: 14px; pointer-events: none;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  #ui {
+    position: absolute; top: 20px; left: 20px;
+    color: white; font-size: 14px;
+    background: rgba(0,0,0,0.7); padding: 14px 18px;
+    border-radius: 12px; pointer-events: none; line-height: 1.7;
+    max-width: 280px;
+  }
+  #ui b { color: #FFD54F; }
+  #ui kbd {
+    background: #37474F; padding: 2px 7px; border-radius: 4px;
+    font-family: monospace; color: white; font-size: 12px;
+    border: 1px solid #546E7A;
+  }
+  #vehicle-select {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px;
+  }
+  .veh-btn {
+    background: rgba(255,255,255,0.95); border: 3px solid transparent;
+    padding: 8px 12px; border-radius: 10px; font-size: 12px;
+    cursor: pointer; font-weight: 700; min-width: 96px;
+    text-align: center; transition: all 0.15s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .veh-btn.active { border-color: #D32F2F; background: #FFEBEE; transform: translateY(-4px); }
+  .veh-btn .num { display: block; font-size: 16px; color: #D32F2F; }
+  #status {
+    position: absolute; top: 20px; right: 20px;
+    color: white; background: rgba(0,0,0,0.7);
+    padding: 12px 18px; border-radius: 12px; pointer-events: none;
+    line-height: 1.65; min-width: 210px;
+  }
+  #status b { color: #FFD54F; }
+  #score-line { font-size: 20px; font-weight: 800; color: #FFEB3B; }
+  #message {
+    position: absolute; top: 86px; left: 50%; transform: translateX(-50%);
+    color: white; font-size: 18px; font-weight: 700;
+    background: rgba(33,33,33,0.88); padding: 12px 22px; border-radius: 12px;
+    opacity: 0; transition: opacity 0.35s; pointer-events: none; text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  #event-list {
+    position: absolute; bottom: 20px; right: 20px;
+    color: white; background: rgba(0,0,0,0.72);
+    padding: 10px 14px; border-radius: 12px;
+    font-size: 13px; pointer-events: none; max-width: 220px;
+    line-height: 1.55;
+  }
+  #event-list .ev { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  #event-list .ev .bar { background: #424242; height: 5px; flex: 1; border-radius: 3px; overflow: hidden; }
+  #event-list .ev .bar > div { height: 100%; background: #F44336; transition: width 0.3s; }
+  #arrow-hint {
+    position: absolute; pointer-events: none;
+    color: #FFEB3B; font-size: 26px; font-weight: 900;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div id="title">🚨 Emergency City — Save the Day! 🚨</div>
+<div id="ui">
+  <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> drive · <kbd>Space</kbd> pick up / drop off<br>
+  <kbd>1</kbd>–<kbd>5</kbd> switch vehicle · 🖱️ drag to explore<br>
+  Use the <b>right vehicle</b> for each emergency!
+</div>
+<div id="status">
+  <div id="score-line">Score: <span id="score">0</span></div>
+  ✅ Saved: <b><span id="saved">0</span></b> · ❌ Missed: <b><span id="missed">0</span></b><br>
+  🚨 Active: <b><span id="active-count">0</span></b><br>
+  🚗 Driving: <b><span id="driving">Police</span></b>
+</div>
+<div id="message"></div>
+<div id="event-list"><b>🚨 Emergencies</b><div id="event-list-body"></div></div>
+<div id="vehicle-select">
+  <button class="veh-btn active" data-v="0" onclick="setVehicle(0)"><span class="num">1</span>🚓 Police</button>
+  <button class="veh-btn"        data-v="1" onclick="setVehicle(1)"><span class="num">2</span>🚒 Fire</button>
+  <button class="veh-btn"        data-v="2" onclick="setVehicle(2)"><span class="num">3</span>🚑 Ambulance</button>
+  <button class="veh-btn"        data-v="3" onclick="setVehicle(3)"><span class="num">4</span>🚌 School Bus</button>
+  <button class="veh-btn"        data-v="4" onclick="setVehicle(4)"><span class="num">5</span>🚕 Taxi</button>
+</div>
+<canvas id="game"></canvas>
+
+<script>
+// ===== Canvas =====
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); addEventListener('resize', resize);
+
+// ===== World =====
+const WORLD = { w: 3400, h: 2400 };
+
+// ===== Roads (grid) =====
+const ROAD_W = 90;
+const ROADS_H = [350, 900, 1500, 2050];       // horizontal roads (y)
+const ROADS_V = [400, 1000, 1700, 2400, 3000]; // vertical roads (x)
+
+function isOnRoad(x, y) {
+  const hw = ROAD_W / 2;
+  for (const ry of ROADS_H) if (Math.abs(y - ry) < hw && x > 60 && x < WORLD.w - 60) return true;
+  for (const rx of ROADS_V) if (Math.abs(x - rx) < hw && y > 60 && y < WORLD.h - 60) return true;
+  return false;
+}
+
+// Road intersection points, used by NPC traffic waypoints
+const INTERSECTIONS = [];
+for (const ry of ROADS_H) for (const rx of ROADS_V) INTERSECTIONS.push({ x: rx, y: ry });
+
+// ===== Special buildings (destinations) =====
+const BUILDINGS = [
+  { id:'hospital', label:'🏥 HOSPITAL',     x: 700,  y: 600,  w: 220, h: 150, color:'#FFFFFF', trim:'#E53935' },
+  { id:'jail',     label:'🚔 POLICE + JAIL',x: 2700, y: 600,  w: 260, h: 150, color:'#607D8B', trim:'#263238' },
+  { id:'school',   label:'🏫 SCHOOL',       x: 1350, y: 1200, w: 240, h: 150, color:'#FFC107', trim:'#F57F17' },
+  { id:'firestn',  label:'🚒 FIRE STATION', x: 2100, y: 1200, w: 220, h: 150, color:'#E53935', trim:'#B71C1C' },
+  { id:'park',     label:'🌳 CITY PARK',    x: 700,  y: 1800, w: 260, h: 180, color:'#66BB6A', trim:'#2E7D32' },
+  { id:'mall',     label:'🛍️ MALL',        x: 2700, y: 1800, w: 280, h: 180, color:'#CE93D8', trim:'#6A1B9A' },
+];
+function building(id) { return BUILDINGS.find(b => b.id === id); }
+
+// ===== Houses (where emergencies spawn) =====
+const HOUSES = [];
+(function seedHouses() {
+  const palette = ['#F06292','#64B5F6','#FFD54F','#81C784','#BA68C8','#FF8A65','#4DB6AC','#AED581','#4FC3F7','#FFB74D','#9575CD','#E57373'];
+  const roofs   = ['#AD1457','#0D47A1','#F57F17','#1B5E20','#4A148C','#BF360C','#004D40','#33691E','#01579B','#E65100','#311B92','#B71C1C'];
+  const spots = [
+    // row 1 top - between road 350 and top
+    [180,170],[600,170],[1180,170],[1480,170],[1870,170],[2480,170],[3130,170],
+    // between 900 and 350
+    [180,620],[1180,620],[1480,620],[2080,620],[2380,620],[3150,620],
+    // between 1500 and 900
+    [200,1200],[560,1200],[1100,1200],[1840,1200],[2490,1200],[3120,1200],
+    // between 2050 and 1500
+    [200,1780],[1060,1780],[1340,1780],[1860,1780],[2220,1780],[2480,1780],[3150,1780],
+    // bottom
+    [200,2280],[560,2280],[1100,2280],[1400,2280],[1860,2280],[2220,2280],[2550,2280],[3150,2280],
+  ];
+  let i = 0;
+  for (const [x, y] of spots) {
+    // Skip spots that would overlap a building
+    if (BUILDINGS.some(b => Math.abs(b.x - x) < (b.w/2 + 90) && Math.abs(b.y - y) < (b.h/2 + 80))) continue;
+    // Skip spots that land on a road
+    if (isOnRoad(x, y)) continue;
+    HOUSES.push({
+      x, y, w: 140, h: 100,
+      color: palette[i % palette.length],
+      roof:  roofs[i % roofs.length],
+    });
+    i++;
+  }
+})();
+
+// ===== Vehicles (player-controllable) =====
+const VEHICLES = [
+  // Starting position: line them up near the police station
+  { type:'police',    label:'Police',     x: 2500, y: 800,  angle: 0, speed:0, maxSpeed:5.0, accel:0.20, turn:0.045, w: 66, h: 34, carrying:null, handles:'crime',     onBoard:'criminal', dest:'jail' },
+  { type:'fire',      label:'Fire Truck', x: 2100, y: 1050, angle: 0, speed:0, maxSpeed:4.0, accel:0.16, turn:0.038, w: 96, h: 40, carrying:null, handles:'fire',      onBoard:null,       dest:null },
+  { type:'ambulance', label:'Ambulance',  x: 900,  y: 800,  angle: 0, speed:0, maxSpeed:4.8, accel:0.18, turn:0.042, w: 84, h: 38, carrying:null, handles:'sick',      onBoard:'patient',  dest:'hospital' },
+  { type:'schoolbus', label:'School Bus', x: 1350, y: 1050, angle: 0, speed:0, maxSpeed:3.6, accel:0.14, turn:0.034, w: 110,h: 40, carrying:null, handles:'kid',       onBoard:'kid',      dest:'school' },
+  { type:'taxi',      label:'Taxi',       x: 700,  y: 1650, angle: 0, speed:0, maxSpeed:4.6, accel:0.17, turn:0.044, w: 72, h: 36, carrying:null, handles:'passenger', onBoard:'person',   dest:'any' },
+];
+let activeIdx = 0;
+function setVehicle(i) {
+  activeIdx = i;
+  document.querySelectorAll('.veh-btn').forEach(b => b.classList.toggle('active', +b.dataset.v === i));
+  document.getElementById('driving').textContent = VEHICLES[i].label;
+  showMessage('🚗 Now driving: ' + VEHICLES[i].label);
+}
+
+// ===== NPC traffic (idle cars) =====
+const NPCS = [];
+(function seedNpcs() {
+  const colors = ['#E53935','#FB8C00','#FDD835','#43A047','#1E88E5','#8E24AA','#6D4C41'];
+  for (let i = 0; i < 18; i++) {
+    const horizontal = Math.random() < 0.5;
+    const rx = horizontal
+      ? 100 + Math.random() * (WORLD.w - 200)
+      : ROADS_V[Math.floor(Math.random() * ROADS_V.length)];
+    const ry = horizontal
+      ? ROADS_H[Math.floor(Math.random() * ROADS_H.length)]
+      : 100 + Math.random() * (WORLD.h - 200);
+    NPCS.push({
+      x: rx, y: ry,
+      dir: horizontal ? (Math.random() < 0.5 ? 'E' : 'W') : (Math.random() < 0.5 ? 'N' : 'S'),
+      speed: 1.0 + Math.random()*0.6,
+      w: 58, h: 30,
+      color: colors[i % colors.length],
+    });
+  }
+})();
+function updateNpcs() {
+  for (const n of NPCS) {
+    const s = n.speed;
+    if (n.dir === 'E') n.x += s;
+    else if (n.dir === 'W') n.x -= s;
+    else if (n.dir === 'N') n.y -= s;
+    else if (n.dir === 'S') n.y += s;
+    // Wrap
+    if (n.x < 60) n.x = WORLD.w - 60;
+    if (n.x > WORLD.w - 60) n.x = 60;
+    if (n.y < 60) n.y = WORLD.h - 60;
+    if (n.y > WORLD.h - 60) n.y = 60;
+  }
+}
+
+// ===== Events (emergencies) =====
+// types: fire, sick, crime, kid, passenger
+// each event: { id, type, x, y, life, maxLife, destId (optional) }
+let nextEventId = 1;
+const events = [];
+const EVENT_DEFS = {
+  fire:      { icon: '🔥', label: 'Fire!',        needs: 'fire',      life: 60 * 60, points: 100, destId: null, color: '#FF6F00' },
+  sick:      { icon: '🤒', label: 'Sick person',  needs: 'ambulance', life: 60 * 55, points: 80,  destId: 'hospital', color: '#26A69A' },
+  crime:     { icon: '🦹', label: 'Bad guy!',     needs: 'police',    life: 60 * 55, points: 90,  destId: 'jail', color: '#37474F' },
+  kid:       { icon: '🧒', label: 'Kid waiting',  needs: 'schoolbus', life: 60 * 70, points: 60,  destId: 'school', color: '#FFB300' },
+  passenger: { icon: '🧳', label: 'Passenger',    needs: 'taxi',      life: 60 * 70, points: 50,  destId: 'any', color: '#1976D2' },
+};
+function randomHouseSpot() {
+  const h = HOUSES[Math.floor(Math.random() * HOUSES.length)];
+  return { x: h.x + (Math.random() < 0.5 ? -1 : 1) * 30, y: h.y + h.h/2 + 30 };
+}
+function pickDestination(def) {
+  if (def.destId === null) return null;
+  if (def.destId === 'any') {
+    // Pick any special building that isn't the pickup location
+    const picks = BUILDINGS.filter(b => b.id !== 'jail' && b.id !== 'firestn');
+    return picks[Math.floor(Math.random() * picks.length)];
+  }
+  return building(def.destId);
+}
+function spawnEvent() {
+  const keys = Object.keys(EVENT_DEFS);
+  // Weighted: more common to spawn everyday events (passenger, kid)
+  const weights = { fire: 1, sick: 1.5, crime: 1.5, kid: 2, passenger: 2 };
+  const totalW = keys.reduce((a, k) => a + weights[k], 0);
+  let r = Math.random() * totalW;
+  let type = keys[0];
+  for (const k of keys) { r -= weights[k]; if (r <= 0) { type = k; break; } }
+  const def = EVENT_DEFS[type];
+  const spot = randomHouseSpot();
+  const dest = pickDestination(def);
+  events.push({
+    id: nextEventId++,
+    type,
+    x: spot.x, y: spot.y,
+    life: def.life, maxLife: def.life,
+    destId: dest ? dest.id : null,
+    pulse: 0,
+  });
+}
+// Pre-seed a few events so there's stuff to do immediately
+spawnEvent(); spawnEvent(); spawnEvent();
+
+let spawnTimer = 60 * 6;  // ~6 seconds until next spawn
+function updateEvents() {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    e.life--;
+    e.pulse += 0.08;
+    if (e.life <= 0) {
+      events.splice(i, 1);
+      stats.missed++;
+      showMessage('❌ Missed a ' + EVENT_DEFS[e.type].label.toLowerCase() + '!');
+    }
+  }
+  spawnTimer--;
+  if (spawnTimer <= 0 && events.length < 6) {
+    spawnEvent();
+    spawnTimer = 60 * (5 + Math.random() * 6);
+  }
+}
+
+// ===== Stats =====
+const stats = { score: 0, saved: 0, missed: 0 };
+function updateStatusUi() {
+  document.getElementById('score').textContent = stats.score;
+  document.getElementById('saved').textContent = stats.saved;
+  document.getElementById('missed').textContent = stats.missed;
+  document.getElementById('active-count').textContent = events.length;
+  // event list panel
+  const body = document.getElementById('event-list-body');
+  if (events.length === 0) {
+    body.innerHTML = '<div style="opacity:0.7;margin-top:6px">All quiet… for now.</div>';
+  } else {
+    body.innerHTML = events.map(e => {
+      const def = EVENT_DEFS[e.type];
+      const pct = Math.max(0, e.life / e.maxLife * 100);
+      return `<div class="ev">${def.icon} <span style="flex:1">${def.label}</span><div class="bar"><div style="width:${pct}%;background:${def.color}"></div></div></div>`;
+    }).join('');
+  }
+}
+
+// ===== Keyboard / mouse =====
+const keys = {};
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (k === '1') setVehicle(0);
+  else if (k === '2') setVehicle(1);
+  else if (k === '3') setVehicle(2);
+  else if (k === '4') setVehicle(3);
+  else if (k === '5') setVehicle(4);
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+let spaceHeld = false, spacePressed = false;
+function updateSpace() {
+  const pressed = !!keys[' '];
+  spacePressed = pressed && !spaceHeld;
+  spaceHeld = pressed;
+}
+
+// ===== Camera + mouse drag =====
+const cam = { x: 0, y: 0, freeUntil: 0 };
+function cameraFollows() { return Date.now() > cam.freeUntil; }
+let drag = null;
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  drag = { x: e.clientX, y: e.clientY, camX: cam.x, camY: cam.y };
+  canvas.style.cursor = 'grabbing';
+});
+addEventListener('mousemove', e => {
+  if (!drag) return;
+  cam.x = drag.camX - (e.clientX - drag.x);
+  cam.y = drag.camY - (e.clientY - drag.y);
+  cam.x = Math.max(0, Math.min(Math.max(0, WORLD.w - W), cam.x));
+  cam.y = Math.max(0, Math.min(Math.max(0, WORLD.h - H), cam.y));
+  cam.freeUntil = Date.now() + 2500;
+});
+addEventListener('mouseup', () => {
+  if (!drag) return;
+  drag = null;
+  canvas.style.cursor = 'grab';
+});
+// Touch drag
+addEventListener('touchstart', e => {
+  const t = e.touches[0]; drag = { x: t.clientX, y: t.clientY, camX: cam.x, camY: cam.y };
+}, { passive: true });
+addEventListener('touchmove', e => {
+  if (!drag) return;
+  const t = e.touches[0];
+  cam.x = drag.camX - (t.clientX - drag.x);
+  cam.y = drag.camY - (t.clientY - drag.y);
+  cam.x = Math.max(0, Math.min(Math.max(0, WORLD.w - W), cam.x));
+  cam.y = Math.max(0, Math.min(Math.max(0, WORLD.h - H), cam.y));
+  cam.freeUntil = Date.now() + 2500;
+}, { passive: true });
+addEventListener('touchend', () => drag = null);
+
+// ===== Messages =====
+function showMessage(text) {
+  const m = document.getElementById('message');
+  m.textContent = text; m.style.opacity = 1;
+  clearTimeout(m._t); m._t = setTimeout(() => m.style.opacity = 0, 2200);
+}
+
+// ===== Particles (visual feedback) =====
+const particles = [];
+function addParticles(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = speed * (0.3 + Math.random() * 0.8);
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 30 + Math.random()*20, age: 0, color, size: 3 + Math.random()*3 });
+  }
+}
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.age++;
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.vy += 0.08;
+    if (p.age > p.life) particles.splice(i, 1);
+  }
+}
+
+// ===== Vehicle update (world-direction movement) =====
+function updateActive() {
+  const v = VEHICLES[activeIdx];
+  const kUp = keys['arrowup'] || keys['w'];
+  const kDown = keys['arrowdown'] || keys['s'];
+  const kLeft = keys['arrowleft'] || keys['a'];
+  const kRight = keys['arrowright'] || keys['d'];
+
+  let dx = 0, dy = 0;
+  if (kLeft) dx -= 1; if (kRight) dx += 1;
+  if (kUp) dy -= 1;   if (kDown) dy += 1;
+
+  if (dx || dy) {
+    const len = Math.hypot(dx, dy);
+    dx /= len; dy /= len;
+    const targetAngle = Math.atan2(dx, -dy);
+    let diff = targetAngle - v.angle;
+    while (diff > Math.PI)  diff -= Math.PI*2;
+    while (diff < -Math.PI) diff += Math.PI*2;
+    const turnStep = v.turn * 2.5;
+    if (Math.abs(diff) < turnStep) v.angle = targetAngle;
+    else v.angle += Math.sign(diff) * turnStep;
+
+    v.speed = Math.min(v.maxSpeed, v.speed + v.accel);
+    const align = Math.max(0.4, Math.cos(diff));
+    let nx = v.x + dx * v.speed * align;
+    let ny = v.y + dy * v.speed * align;
+
+    // Off-road slow penalty (not blocking — still drivable over grass)
+    if (!isOnRoad(nx, ny)) {
+      v.speed *= 0.88;
+      nx = v.x + dx * v.speed * align;
+      ny = v.y + dy * v.speed * align;
+    }
+
+    // Collision with building rectangles — block sliding
+    const block = (px, py) => {
+      for (const b of BUILDINGS) {
+        if (px > b.x - b.w/2 - 16 && px < b.x + b.w/2 + 16 &&
+            py > b.y - b.h/2 - 16 && py < b.y + b.h/2 + 16) return true;
+      }
+      for (const h of HOUSES) {
+        if (px > h.x - h.w/2 - 10 && px < h.x + h.w/2 + 10 &&
+            py > h.y - h.h/2 - 10 && py < h.y + h.h/2 + 10) return true;
+      }
+      return false;
+    };
+    if (!block(nx, v.y)) v.x = nx;
+    if (!block(v.x, ny)) v.y = ny;
+
+    v.x = Math.max(40, Math.min(WORLD.w - 40, v.x));
+    v.y = Math.max(40, Math.min(WORLD.h - 40, v.y));
+  } else {
+    v.speed = Math.max(0, v.speed - v.accel * 1.8);
+  }
+
+  // Siren lights phase
+  v.sirenPhase = (v.sirenPhase || 0) + 0.22;
+
+  // Camera
+  if (kUp || kDown || kLeft || kRight) cam.freeUntil = 0;
+  if (cameraFollows()) {
+    cam.x = v.x - W/2;
+    cam.y = v.y - H/2;
+    cam.x = Math.max(0, Math.min(Math.max(0, WORLD.w - W), cam.x));
+    cam.y = Math.max(0, Math.min(Math.max(0, WORLD.h - H), cam.y));
+  }
+
+  if (spacePressed) doAction(v);
+}
+
+// ===== Action (Space) =====
+function doAction(v) {
+  // If carrying a passenger/criminal, try to drop off at destination
+  if (v.carrying) {
+    const e = v.carrying;
+    const def = EVENT_DEFS[e.type];
+    const destId = e.destId;
+    if (!destId) {
+      // Shouldn't happen, but drop anyway
+      dropOff(v, e, true);
+      return;
+    }
+    const dest = building(destId);
+    const dist = Math.hypot(v.x - dest.x, v.y - dest.y);
+    if (dist < 130) {
+      dropOff(v, e, true);
+    } else {
+      showMessage('Take them to ' + dest.label + '!');
+    }
+    return;
+  }
+
+  // Otherwise: try to pick up a nearby matching event
+  let best = null, bestDist = Infinity;
+  for (const e of events) {
+    const def = EVENT_DEFS[e.type];
+    if (def.needs !== v.type) continue;
+    const d = Math.hypot(v.x - e.x, v.y - e.y);
+    if (d < 110 && d < bestDist) { best = e; bestDist = d; }
+  }
+  if (!best) {
+    // If any event is nearby but wrong vehicle, hint
+    let anyNear = null;
+    for (const e of events) {
+      const d = Math.hypot(v.x - e.x, v.y - e.y);
+      if (d < 110) { anyNear = e; break; }
+    }
+    if (anyNear) {
+      const need = EVENT_DEFS[anyNear.type].needs;
+      const nm = VEHICLES.find(vv => vv.type === need);
+      showMessage('Need the ' + (nm ? nm.label : need) + ' for this!');
+    } else {
+      showMessage('No emergency here. Find one on the map!');
+    }
+    return;
+  }
+  // Fire: resolve immediately (no destination)
+  if (best.type === 'fire') {
+    addParticles(best.x, best.y, '#03A9F4', 28, 5);
+    addParticles(best.x, best.y, '#FFFFFF', 14, 3);
+    removeEvent(best);
+    stats.score += EVENT_DEFS.fire.points;
+    stats.saved++;
+    showMessage('🚒 Fire out! +' + EVENT_DEFS.fire.points);
+    return;
+  }
+  // Everyone else: pick them up
+  v.carrying = best;
+  best.picked = true;
+  const def = EVENT_DEFS[best.type];
+  const dest = building(best.destId);
+  showMessage(def.icon + ' Picked up! Take to ' + (dest ? dest.label : '?'));
+}
+function dropOff(v, e, success) {
+  const def = EVENT_DEFS[e.type];
+  v.carrying = null;
+  removeEvent(e);
+  if (success) {
+    stats.score += def.points;
+    stats.saved++;
+    addParticles(v.x, v.y, '#FFEB3B', 24, 4);
+    addParticles(v.x, v.y, '#81C784', 14, 3);
+    showMessage('✅ ' + def.label + ' delivered! +' + def.points);
+  }
+}
+function removeEvent(e) {
+  const i = events.indexOf(e);
+  if (i >= 0) events.splice(i, 1);
+}
+
+// ===== Drawing =====
+function w2s(x, y) { return [x - cam.x, y - cam.y]; }
+
+function drawGround() {
+  const [sx, sy] = w2s(0, 0);
+  ctx.fillStyle = '#7CB342';
+  ctx.fillRect(sx, sy, WORLD.w, WORLD.h);
+  // grass texture
+  ctx.fillStyle = 'rgba(46, 125, 50, 0.18)';
+  const tile = 70;
+  const x0 = Math.floor(cam.x / tile) * tile;
+  const y0 = Math.floor(cam.y / tile) * tile;
+  for (let x = x0; x < cam.x + W + tile; x += tile) {
+    for (let y = y0; y < cam.y + H + tile; y += tile) {
+      const seed = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      if ((seed % 100) < 45) {
+        const [ssx, ssy] = w2s(x + (seed % 50), y + ((seed >> 8) % 50));
+        ctx.fillRect(ssx, ssy, 4, 4);
+      }
+    }
+  }
+}
+
+function drawRoads() {
+  const hw = ROAD_W / 2;
+  ctx.fillStyle = '#37474F';
+  for (const ry of ROADS_H) {
+    const [sx, sy] = w2s(60, ry - hw);
+    ctx.fillRect(sx, sy, WORLD.w - 120, ROAD_W);
+  }
+  for (const rx of ROADS_V) {
+    const [sx, sy] = w2s(rx - hw, 60);
+    ctx.fillRect(sx, sy, ROAD_W, WORLD.h - 120);
+  }
+  // yellow dashed center lines
+  ctx.strokeStyle = '#FFEB3B';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([24, 16]);
+  for (const ry of ROADS_H) {
+    const [sx, sy] = w2s(60, ry);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + WORLD.w - 120, sy); ctx.stroke();
+  }
+  for (const rx of ROADS_V) {
+    const [sx, sy] = w2s(rx, 60);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + WORLD.h - 120); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // white curb stripes
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+  ctx.lineWidth = 2;
+  for (const ry of ROADS_H) {
+    const [sx, sy] = w2s(60, ry - hw);
+    ctx.strokeRect(sx, sy, WORLD.w - 120, ROAD_W);
+  }
+  for (const rx of ROADS_V) {
+    const [sx, sy] = w2s(rx - hw, 60);
+    ctx.strokeRect(sx, sy, ROAD_W, WORLD.h - 120);
+  }
+}
+
+function drawBuildings() {
+  for (const b of BUILDINGS) {
+    const [sx, sy] = w2s(b.x - b.w/2, b.y - b.h/2);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(sx + 6, sy + 8, b.w, b.h);
+    // main
+    ctx.fillStyle = b.color;
+    ctx.fillRect(sx, sy, b.w, b.h);
+    // trim band
+    ctx.fillStyle = b.trim;
+    ctx.fillRect(sx, sy, b.w, 22);
+    ctx.fillRect(sx, sy + b.h - 14, b.w, 14);
+    // door
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(sx + b.w/2 - 22, sy + b.h - 52, 44, 52);
+    ctx.fillStyle = '#FFD54F';
+    ctx.fillRect(sx + b.w/2 + 12, sy + b.h - 28, 4, 4);
+    // label
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(b.label, sx + b.w/2, sy + 12);
+
+    // Special icons
+    if (b.id === 'hospital') {
+      ctx.fillStyle = '#E53935';
+      ctx.fillRect(sx + b.w/2 - 5, sy + b.h/2 - 22, 10, 44);
+      ctx.fillRect(sx + b.w/2 - 22, sy + b.h/2 - 5, 44, 10);
+    } else if (b.id === 'jail') {
+      // bars
+      ctx.strokeStyle = '#212121'; ctx.lineWidth = 3;
+      for (let bx = 10; bx < b.w - 10; bx += 14) {
+        ctx.beginPath(); ctx.moveTo(sx + bx, sy + 28); ctx.lineTo(sx + bx, sy + b.h - 18); ctx.stroke();
+      }
+    } else if (b.id === 'school') {
+      ctx.fillStyle = '#FFFFFF';
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 5; c++) {
+        ctx.fillRect(sx + 20 + c*40, sy + 32 + r*38, 22, 22);
+      }
+    } else if (b.id === 'firestn') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(sx + 20, sy + 36, b.w - 40, 60);
+    } else if (b.id === 'park') {
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = '#2E7D32';
+        ctx.beginPath(); ctx.arc(sx + 50 + i*50, sy + b.h/2 + 10, 22, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#795548';
+        ctx.fillRect(sx + 48 + i*50, sy + b.h/2 + 24, 6, 16);
+      }
+    } else if (b.id === 'mall') {
+      ctx.fillStyle = '#FFFFFF';
+      for (let c = 0; c < 6; c++) ctx.fillRect(sx + 14 + c*42, sy + 40, 28, 40);
+      ctx.fillRect(sx + 14, sy + 96, b.w - 28, 24);
+    }
+  }
+}
+
+function drawHouses() {
+  for (const h of HOUSES) {
+    const [sx, sy] = w2s(h.x - h.w/2, h.y - h.h/2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(sx + 5, sy + 6, h.w, h.h);
+    ctx.fillStyle = h.color;
+    ctx.fillRect(sx, sy, h.w, h.h);
+    ctx.fillStyle = h.roof;
+    ctx.beginPath();
+    ctx.moveTo(sx - 6, sy);
+    ctx.lineTo(sx + h.w/2, sy - 30);
+    ctx.lineTo(sx + h.w + 6, sy);
+    ctx.closePath(); ctx.fill();
+    // door + window
+    ctx.fillStyle = '#3E2723';
+    ctx.fillRect(sx + h.w/2 - 12, sy + h.h - 36, 24, 36);
+    ctx.fillStyle = '#B3E5FC';
+    ctx.fillRect(sx + 18, sy + 20, 24, 22);
+    ctx.fillRect(sx + h.w - 42, sy + 20, 24, 22);
+    ctx.strokeStyle = '#37474F'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(sx + 18, sy + 20, 24, 22);
+    ctx.strokeRect(sx + h.w - 42, sy + 20, 24, 22);
+  }
+}
+
+function drawEvents() {
+  for (const e of events) {
+    const def = EVENT_DEFS[e.type];
+    const [sx, sy] = w2s(e.x, e.y);
+    const pulse = 1 + Math.sin(e.pulse) * 0.2;
+    // outer ring
+    ctx.fillStyle = def.color;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath(); ctx.arc(sx, sy, 44 * pulse, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    // inner disc
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = def.color; ctx.lineWidth = 4;
+    ctx.stroke();
+    // icon
+    ctx.font = '30px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(def.icon, sx, sy + 2);
+    // life bar
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(sx - 26, sy + 32, 52, 6);
+    ctx.fillStyle = def.color;
+    ctx.fillRect(sx - 26, sy + 32, 52 * (e.life / e.maxLife), 6);
+
+    // If this event matches the active vehicle, draw a bright label
+    const active = VEHICLES[activeIdx];
+    if (def.needs === active.type) {
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#FFEB3B';
+      ctx.fillText('SPACE', sx, sy - 38);
+    }
+  }
+}
+
+function drawNpcs() {
+  for (const n of NPCS) {
+    const [sx, sy] = w2s(n.x, n.y);
+    if (sx < -60 || sx > W + 60 || sy < -60 || sy > H + 60) continue;
+    ctx.save();
+    ctx.translate(sx, sy);
+    const ang = n.dir === 'E' ? Math.PI/2 : n.dir === 'W' ? -Math.PI/2 : n.dir === 'N' ? 0 : Math.PI;
+    ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(-n.w/2 + 3, -n.h/2 + 4, n.w, n.h);
+    ctx.fillStyle = n.color;
+    ctx.fillRect(-n.w/2, -n.h/2, n.w, n.h);
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(n.w/2 - 12, -n.h/2 + 4, 8, n.h - 8);
+    ctx.fillRect(-n.w/2 + 4, -n.h/2 + 4, 8, n.h - 8);
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(-n.w/2 + 6,  n.h/2 - 3, 12, 5);
+    ctx.fillRect( n.w/2 - 18, n.h/2 - 3, 12, 5);
+    ctx.fillRect(-n.w/2 + 6, -n.h/2 - 3, 12, 5);
+    ctx.fillRect( n.w/2 - 18, -n.h/2 - 3, 12, 5);
+    ctx.restore();
+  }
+}
+
+function drawVehicle(v, isActive) {
+  const [sx, sy] = w2s(v.x, v.y);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(v.angle);
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(-v.w/2 + 3, -v.h/2 + 5, v.w, v.h);
+
+  // Body
+  if (v.type === 'police') {
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, v.h/2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-v.w/2,  0, v.w, v.h/2);
+    // lightbar (front = angle 0 means +Y up sprite... front is top)
+    const red = Math.sin(v.sirenPhase || 0) > 0;
+    ctx.fillStyle = red ? '#F44336' : '#1A237E';
+    ctx.fillRect(-10, -v.h/2 - 6, 20, 6);
+    ctx.fillStyle = red ? '#1A237E' : '#F44336';
+    ctx.fillRect(-10, -v.h/2 - 6, 10, 6);
+    ctx.fillStyle = '#FFEB3B';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('POLICE', 0, v.h/4);
+  } else if (v.type === 'fire') {
+    ctx.fillStyle = '#E53935';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, v.h);
+    // ladder
+    ctx.fillStyle = '#FFEB3B';
+    ctx.fillRect(-v.w/2 + 6, -v.h/2 + 4, v.w - 12, 6);
+    ctx.strokeStyle = '#B71C1C'; ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-v.w/2 + 10 + i*12, -v.h/2 + 4);
+      ctx.lineTo(-v.w/2 + 10 + i*12, -v.h/2 + 10);
+      ctx.stroke();
+    }
+    // lights
+    const red = Math.sin(v.sirenPhase || 0) > 0;
+    ctx.fillStyle = red ? '#FFFFFF' : '#F44336';
+    ctx.fillRect(-10, -v.h/2 - 6, 20, 6);
+  } else if (v.type === 'ambulance') {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, v.h);
+    ctx.fillStyle = '#E53935';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, 6);
+    ctx.fillRect(-v.w/2, v.h/2 - 6, v.w, 6);
+    // cross
+    ctx.fillStyle = '#E53935';
+    ctx.fillRect(-4, -10, 8, 20);
+    ctx.fillRect(-10, -4, 20, 8);
+    const red = Math.sin(v.sirenPhase || 0) > 0;
+    ctx.fillStyle = red ? '#F44336' : '#FFEB3B';
+    ctx.fillRect(-10, -v.h/2 - 6, 20, 6);
+  } else if (v.type === 'schoolbus') {
+    ctx.fillStyle = '#FFC107';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, v.h);
+    // row of windows
+    ctx.fillStyle = '#263238';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(-v.w/2 + 10 + i*16, -v.h/2 + 6, 12, v.h - 20);
+    }
+    // stop sign text
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-v.w/2, v.h/2 - 8, v.w, 6);
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('SCHOOL BUS', 0, v.h/2 - 5);
+  } else if (v.type === 'taxi') {
+    ctx.fillStyle = '#FDD835';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, v.h);
+    // roof sign
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(-10, -v.h/2 - 6, 20, 6);
+    ctx.fillStyle = '#FDD835';
+    ctx.font = 'bold 7px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('TAXI', 0, -v.h/2 - 3);
+    // checker pattern side
+    ctx.fillStyle = '#212121';
+    for (let i = 0; i < 5; i++) ctx.fillRect(-v.w/2 + i*14, -3, 7, 6);
+  }
+
+  // windshield
+  ctx.fillStyle = 'rgba(100, 181, 246, 0.75)';
+  ctx.fillRect(-v.w/2 + 6, -v.h/2 + 4, 6, v.h - 8);
+  ctx.fillRect(v.w/2 - 12, -v.h/2 + 4, 6, v.h - 8);
+
+  // wheels
+  ctx.fillStyle = '#212121';
+  ctx.fillRect(-v.w/2 + 6,  v.h/2 - 3, 14, 6);
+  ctx.fillRect( v.w/2 - 20, v.h/2 - 3, 14, 6);
+  ctx.fillRect(-v.w/2 + 6, -v.h/2 - 3, 14, 6);
+  ctx.fillRect( v.w/2 - 20, -v.h/2 - 3, 14, 6);
+
+  // Carrying indicator
+  if (v.carrying) {
+    const def = EVENT_DEFS[v.carrying.type];
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(def.icon, 0, 0);
+  }
+
+  // Active highlight
+  if (isActive) {
+    ctx.strokeStyle = '#FFEB3B';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-v.w/2 - 3, -v.h/2 - 3, v.w + 6, v.h + 6);
+  }
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const [sx, sy] = w2s(p.x, p.y);
+    const a = 1 - p.age / p.life;
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(sx, sy, p.size, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Compass arrow pointing to nearest matching event when active vehicle has a job to do.
+function drawCompass() {
+  const v = VEHICLES[activeIdx];
+  // If carrying someone, point to destination. Otherwise point to nearest matching event.
+  let target = null;
+  if (v.carrying) {
+    const b = building(v.carrying.destId);
+    if (b) target = { x: b.x, y: b.y, label: b.label };
+  } else {
+    let best = null, bestD = Infinity;
+    for (const e of events) {
+      const def = EVENT_DEFS[e.type];
+      if (def.needs !== v.type) continue;
+      const d = Math.hypot(v.x - e.x, v.y - e.y);
+      if (d < bestD) { best = e; bestD = d; }
+    }
+    if (best) target = { x: best.x, y: best.y, label: EVENT_DEFS[best.type].label };
+  }
+  if (!target) return;
+  const [tx, ty] = w2s(target.x, target.y);
+  // If target is off-screen, draw an arrow at the edge pointing to it
+  const margin = 60;
+  if (tx > margin && tx < W - margin && ty > margin && ty < H - margin) return;
+  const cx = W/2, cy = H/2;
+  const dx = tx - cx, dy = ty - cy;
+  const ang = Math.atan2(dy, dx);
+  const halfW = W/2 - margin, halfH = H/2 - margin;
+  const t = Math.min(halfW / Math.abs(Math.cos(ang) || 1e-3), halfH / Math.abs(Math.sin(ang) || 1e-3));
+  const ax = cx + Math.cos(ang) * t;
+  const ay = cy + Math.sin(ang) * t;
+  ctx.save();
+  ctx.translate(ax, ay);
+  ctx.rotate(ang);
+  ctx.fillStyle = '#FFEB3B';
+  ctx.strokeStyle = '#212121'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(24, 0); ctx.lineTo(-10, -16); ctx.lineTo(-4, 0); ctx.lineTo(-10, 16); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+  // label
+  ctx.fillStyle = '#FFEB3B';
+  ctx.strokeStyle = '#212121'; ctx.lineWidth = 3;
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.strokeText(target.label, ax, ay + (ay < H/2 ? 30 : -30));
+  ctx.fillText(target.label, ax, ay + (ay < H/2 ? 30 : -30));
+}
+
+// ===== Main loop =====
+function loop() {
+  updateSpace();
+  updateActive();
+  updateNpcs();
+  updateEvents();
+  updateParticles();
+  updateStatusUi();
+
+  drawGround();
+  drawRoads();
+  drawHouses();
+  drawBuildings();
+  drawNpcs();
+  drawEvents();
+  // player vehicles (non-active first)
+  for (let i = 0; i < VEHICLES.length; i++) {
+    if (i === activeIdx) continue;
+    drawVehicle(VEHICLES[i], false);
+  }
+  drawVehicle(VEHICLES[activeIdx], true);
+  drawParticles();
+  drawCompass();
+
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

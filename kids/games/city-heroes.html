@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>City Heroes — Cannon, Fire, Ambulance & Police!</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#000; overflow:hidden; height:100vh; }
+  canvas { display:block; }
+  #title {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    color:white; font-size:20px; font-weight:800; white-space:nowrap;
+    background:linear-gradient(135deg,#BF360C,#1565C0,#C62828);
+    padding:10px 26px; border-radius:14px; pointer-events:none;
+    text-shadow:0 2px 4px rgba(0,0,0,0.5); box-shadow:0 4px 14px rgba(0,0,0,0.5);
+  }
+  #ui {
+    position:absolute; top:20px; left:20px; color:#FFF8E1; font-size:13px;
+    background:rgba(20,20,30,0.88); padding:12px 16px; border-radius:12px;
+    pointer-events:none; line-height:1.75; max-width:295px;
+    border:1px solid rgba(150,180,255,0.25);
+  }
+  #ui b { color:#FFD54F; } #ui kbd { background:#263238; padding:2px 7px; border-radius:4px; font-family:monospace; color:#FFE082; font-size:12px; border:1px solid #455A64; }
+  #status {
+    position:absolute; top:20px; right:20px; color:#FFF8E1;
+    background:rgba(20,20,30,0.88); padding:12px 16px; border-radius:12px;
+    pointer-events:none; line-height:1.65; min-width:200px;
+    border:1px solid rgba(150,180,255,0.25);
+  }
+  #score-line { font-size:22px; font-weight:800; color:#FFEB3B; }
+  #status b { color:#FFD54F; }
+  .bar { height:10px; background:#263238; border-radius:5px; overflow:hidden; margin-top:3px; }
+  .bar > div { height:100%; border-radius:5px; transition:width 0.15s; }
+  #message {
+    position:absolute; top:88px; left:50%; transform:translateX(-50%);
+    color:white; font-size:17px; font-weight:800;
+    background:rgba(15,15,25,0.92); padding:12px 24px; border-radius:12px;
+    opacity:0; transition:opacity 0.35s; pointer-events:none; text-align:center;
+    border:1px solid rgba(180,180,255,0.3);
+  }
+  #vehicles {
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px;
+  }
+  .v-btn {
+    background:rgba(20,20,30,0.9); color:white; border:2px solid rgba(150,180,255,0.3);
+    padding:8px 12px; border-radius:10px; font-size:12px; cursor:pointer; font-weight:700;
+    min-width:112px; text-align:center;
+  }
+  .v-btn.active { border-color:#FFEB3B; background:rgba(80,70,10,0.95); transform:translateY(-4px); }
+  .v-btn .num { display:block; font-size:15px; color:#FFEB3B; }
+  #action-hint {
+    position:absolute; bottom:92px; left:50%; transform:translateX(-50%);
+    color:#FFEB3B; font-size:14px; font-weight:700; pointer-events:none;
+    background:rgba(0,0,0,0.7); padding:6px 14px; border-radius:8px;
+    opacity:0; transition:opacity 0.3s;
+  }
+  #game-over {
+    position:absolute; inset:0; display:none;
+    background:rgba(10,10,20,0.93); z-index:50;
+    align-items:center; justify-content:center; flex-direction:column; color:white;
+  }
+  #game-over.show { display:flex; }
+  #game-over h1 { font-size:56px; color:#FF5722; text-shadow:0 0 20px rgba(255,87,34,0.6); margin-bottom:10px; }
+  #game-over .sub { font-size:19px; margin-bottom:16px; color:#FFCCBC; }
+  #game-over button { padding:14px 32px; font-size:17px; font-weight:800; border-radius:12px; border:none; cursor:pointer; background:linear-gradient(135deg,#FF9800,#F44336); color:white; }
+</style>
+</head>
+<body>
+<div id="title">🚒 City Heroes — Cannon · Fire Truck · Ambulance · Police 🚓</div>
+<div id="ui">
+  <kbd>↑↓←→</kbd> drive · <kbd>Space</kbd> action<br>
+  <kbd>1</kbd>🔥 · <kbd>2</kbd>💧 · <kbd>3</kbd>🚑 · <kbd>4</kbd>🚓 · <kbd>5</kbd>🚛 · <kbd>6</kbd>🚚 · <kbd>7</kbd>⚡ · <kbd>8</kbd>🚀 · <kbd>9</kbd>✈️ · <kbd>0</kbd>🚁<br>
+  <b>Cannon:</b> <kbd>Q</kbd> fireball · <kbd>W</kbd> cannonball · <kbd>E</kbd> TNT · <kbd>T</kbd> drop TNT<br>
+  💡 Shoot TNT crates to chain-explode!
+</div>
+<div id="status">
+  <div id="score-line">⭐ <span id="score">0</span> &nbsp;💰 <span id="money">20000</span></div>
+  <span id="veh-label">🔥 Cannon Tank</span><br>
+  Vehicle HP <b><span id="hp-txt">100</span>%</b>
+  <div class="bar"><div id="hp-bar" style="width:100%;background:linear-gradient(90deg,#F44336,#FF9800,#4CAF50)"></div></div>
+  City <div class="bar"><div id="city-bar" style="width:100%;background:#4CAF50"></div></div>
+  Wave <b><span id="wave">1</span></b> · Kills <b><span id="kills">0</span></b><br>
+  🧑 <b><span id="saved">0</span></b> · 🔥 <b><span id="fout">0</span></b> · 🧹 <b><span id="cleaned">0</span></b> · 🗑️ <b><span id="collected">0</span></b>
+</div>
+<div id="message"></div>
+<div id="action-hint"></div>
+<div id="vehicles">
+  <button class="v-btn active" data-v="0" onclick="switchVehicle(0)"><span class="num">1</span>🔥 Cannon</button>
+  <button class="v-btn"        data-v="1" onclick="switchVehicle(1)"><span class="num">2</span>💧 Fire Truck</button>
+  <button class="v-btn"        data-v="2" onclick="switchVehicle(2)"><span class="num">3</span>🚑 Ambulance</button>
+  <button class="v-btn"        data-v="3" onclick="switchVehicle(3)"><span class="num">4</span>🚓 Police</button>
+  <button class="v-btn"        data-v="4" onclick="switchVehicle(4)"><span class="num">5</span>🚛 Cleaner</button>
+  <button class="v-btn"        data-v="5" onclick="switchVehicle(5)"><span class="num">6</span>🚚 Garbage</button>
+  <button class="v-btn"        data-v="6" onclick="switchVehicle(6)"><span class="num">7</span>⚡ E-Train</button>
+  <button class="v-btn"        data-v="7" onclick="switchVehicle(7)"><span class="num">8</span>🚀 Rocket</button>
+  <button class="v-btn"        data-v="8" onclick="switchVehicle(8)"><span class="num">9</span>✈️ Jet</button>
+  <button class="v-btn"        data-v="9"  onclick="switchVehicle(9)"><span class="num">0</span>🚁 Heli</button>
+  <button class="v-btn"        data-v="10" onclick="switchVehicle(10)"><span class="num">P</span>🍕 Pizza Car</button>
+  <button class="v-btn"        data-v="11" onclick="switchVehicle(11)"><span class="num">M</span>🛵 Pizza Bike</button>
+</div>
+<div id="game-over">
+  <h1>CITY DOWN!</h1>
+  <div class="sub" id="go-sub">The city fell…</div>
+  <div class="sub">Score: <span id="go-score">0</span></div>
+  <button onclick="location.reload()">Play Again</button>
+</div>
+<canvas id="game"></canvas>
+<script>
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+let W,H; function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;} resize(); addEventListener('resize',resize);
+const WORLD={w:3400,h:2600};
+const ROAD_W=100;
+const ROADS_H=[300,800,1400,2000,2400];
+const ROADS_V=[300,900,1600,2300,3000];
+function onRoad(x,y){const hw=ROAD_W/2+4;for(const ry of ROADS_H)if(Math.abs(y-ry)<hw&&x>60&&x<WORLD.w-60)return true;for(const rx of ROADS_V)if(Math.abs(x-rx)<hw&&y>60&&y<WORLD.h-60)return true;return false;}
+
+// ===== Special Buildings =====
+const SPECIAL_BLDGS=[
+  {id:'hospital',x:900,y:700,w:260,h:160,label:'🏥 HOSPITAL',color:'#FFFFFF',trim:'#E53935'},
+  {id:'firestation',x:2500,y:700,w:240,h:150,label:'🚒 FIRE STATION',color:'#E53935',trim:'#B71C1C'},
+  {id:'policestation',x:900,y:2000,w:240,h:150,label:'🚔 POLICE HQ',color:'#1565C0',trim:'#0D47A1'},
+  {id:'townhall',x:1700,y:1400,w:280,h:180,label:'🏛️ TOWN HALL',color:'#FFF9C4',trim:'#F9A825'},
+  {id:'dump',x:2500,y:2000,w:260,h:170,label:'🗑️ GARBAGE DUMP',color:'#795548',trim:'#4E342E'},
+  {id:'carshop',x:300,y:1400,w:260,h:160,label:'🏪 CAR SHOP',color:'#F3E5F5',trim:'#7B1FA2'},
+  {id:'jail',      x:300, y:700, w:240,h:150,label:'🚔 JAIL',       color:'#546E7A',trim:'#263238'},
+  {id:'pizzashop', x:2100,y:1100,w:250,h:155,label:'🍕 PIZZA SHOP',color:'#FF6F00',trim:'#BF360C'},
+  {id:'airport',   x:2550,y:430, w:310,h:170,label:'✈️ AIRPORT',   color:'#B0BEC5',trim:'#37474F'},
+];
+
+// ===== Runway =====
+const RUNWAY={x1:1750,y1:178,x2:3250,y2:232};
+
+// ===== Bus Stops =====
+const BUS_STOPS=[
+  {x:560,y:800},{x:1100,y:800},{x:1700,y:800},{x:2300,y:800},{x:2840,y:800},
+  {x:300,y:1400},{x:900,y:1400},{x:1600,y:1400},{x:2300,y:1400},{x:3000,y:1400},
+  {x:560,y:2000},{x:1700,y:2000},{x:2840,y:2000},
+];
+
+// ===== Buildings =====
+const BUILDINGS=[];
+(function seedBuildings(){
+  const palette=[['#EF9A9A','#B71C1C'],['#90CAF9','#0D47A1'],['#FFF59D','#F57F17'],['#A5D6A7','#1B5E20'],['#CE93D8','#4A148C'],['#FFCC80','#E65100'],['#80DEEA','#006064'],['#BCAAA4','#3E2723'],['#F48FB1','#880E4F'],['#C5E1A5','#33691E'],['#80CBC4','#004D40'],['#FFAB91','#BF360C']];
+  const allY=[0,...ROADS_H,WORLD.h], allX=[0,...ROADS_V,WORLD.w];
+  for(let i=0;i<allY.length-1;i++) for(let j=0;j<allX.length-1;j++){
+    const y0=allY[i]+ROAD_W/2+8,y1=allY[i+1]-ROAD_W/2-8;
+    const x0=allX[j]+ROAD_W/2+8,x1=allX[j+1]-ROAD_W/2-8;
+    const cw=x1-x0,ch=y1-y0; if(cw<50||ch<50) continue;
+    const cols=1+Math.floor(Math.random()*2),rows=1+Math.floor(Math.random()*2);
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+      const bx0=x0+c*(cw/cols)+14,bx1=x0+(c+1)*(cw/cols)-14;
+      const by0=y0+r*(ch/rows)+14,by1=y0+(r+1)*(ch/rows)-14;
+      const bw=bx1-bx0,bh=by1-by0; if(bw<40||bh<40) continue;
+      const cx2=(bx0+bx1)/2,cy2=(by0+by1)/2;
+      // Skip if overlapping special buildings
+      if(SPECIAL_BLDGS.some(s=>Math.abs(s.x-cx2)<(s.w/2+70)&&Math.abs(s.y-cy2)<(s.h/2+70))) continue;
+      const p=palette[Math.floor(Math.random()*palette.length)];
+      const tall=bw>90&&bh>90&&Math.random()<0.22;
+      BUILDINGS.push({x:cx2,y:cy2,w:bw,h:bh,color:p[0],roof:p[1],hp:tall?200:100,maxHp:tall?200:100,alive:true,onFire:false,fireAge:0,tall});
+    }
+  }
+})();
+
+// ===== TNT Crates =====
+const tntCrates=[];
+(function(){for(let i=0;i<28;i++){let x,y,t=0;do{x=160+Math.random()*(WORLD.w-320);y=160+Math.random()*(WORLD.h-320);t++;}while(!onRoad(x,y)&&t<20);tntCrates.push({x,y,alive:true,lit:false,litTimer:0});}})();
+
+// ===== Vehicles (4 playable) =====
+const VDEFS=[
+  {type:'cannon',    label:'🔥 Cannon',    color:'#E65100',trim:'#BF360C', maxHp:120,maxSpeed:5.0,accel:0.20,turn:0.055,w:44,h:52, spaceLabel:'Shoot fireball'},
+  {type:'firetruck', label:'💧 Fire Truck', color:'#C62828',trim:'#FF8A80', maxHp:100,maxSpeed:4.2,accel:0.17,turn:0.048,w:60,h:68, spaceLabel:'Spray water'},
+  {type:'ambulance', label:'🚑 Ambulance', color:'#FFFFFF',trim:'#E53935',  maxHp:80, maxSpeed:5.8,accel:0.22,turn:0.060,w:46,h:60, spaceLabel:'Pick up / drop off'},
+  {type:'police',    label:'🚓 Police',    color:'#1A237E',trim:'#FFFFFF',  maxHp:90, maxSpeed:6.5,accel:0.26,turn:0.065,w:40,h:56, spaceLabel:'Shoot enemy'},
+  {type:'cleaner',   label:'🚛 Cleaner',   color:'#F9A825',trim:'#FF6F00',  maxHp:110,maxSpeed:3.5,accel:0.13,turn:0.040,w:58,h:72, spaceLabel:'Power wash!'},
+  {type:'garbage',   label:'🚚 Garbage',   color:'#388E3C',trim:'#1B5E20',  maxHp:130,maxSpeed:3.2,accel:0.12,turn:0.038,w:56,h:74, spaceLabel:'Dump at dump!'},
+  {type:'train',     label:'⚡ E-Train',   color:'#E3F2FD',trim:'#1565C0',  maxHp:999,maxSpeed:8.0,accel:0.09,turn:0,    w:36,h:64, spaceLabel:'🔔 Ding ding!'},
+  {type:'rocket',    label:'🚀 Rocket',    color:'#ECEFF1',trim:'#0D47A1',  maxHp:70, maxSpeed:11.0,accel:0.28,turn:0.07,w:24,h:54, spaceLabel:'🚀 Fire missile!'},
+  {type:'jet',        label:'✈️ Fighter Jet', color:'#78909C',trim:'#263238', maxHp:80, maxSpeed:15.0,accel:0.40,turn:0.09,w:56,h:40, spaceLabel:'✈️ Fire missile!'},
+  {type:'helicopter', label:'🚁 Helicopter',  color:'#1565C0',trim:'#E3F2FD', maxHp:90, maxSpeed:8.0, accel:0.26,turn:0.11,w:50,h:50, spaceLabel:'🚁 Rescue / Arrest!'},
+  {type:'pizzacar',   label:'🍕 Pizza Car',   color:'#FFC107',trim:'#FF6F00', maxHp:80, maxSpeed:6.5, accel:0.22,turn:0.058,w:44,h:58, spaceLabel:'🍕 Deliver pizza!'},
+  {type:'pizzabike',  label:'🛵 Pizza Bike',  color:'#E53935',trim:'#B71C1C', maxHp:60, maxSpeed:9.5, accel:0.32,turn:0.075,w:24,h:44, spaceLabel:'🍕 Deliver pizza!'},
+];
+// Each vehicle lives at a parking spot
+const VSTART=[[1400,800],[1600,800],[1800,800],[2000,800],[2200,800],[2400,800],[1700,530],[1700,400],[2200,200],[1400,200],[2100,1400],[2300,1400]];
+const vehicles=VDEFS.map((d,i)=>({...d,x:VSTART[i][0],y:VSTART[i][1],vx:0,vy:0,angle:0,speed:0,hp:d.maxHp,shield:0,carrying:null,sirenPhase:0,waterStream:[]}));
+vehicles[8].gearDown=true; // jet starts with landing gear deployed
+let activeV=0;
+function switchVehicle(i){
+  if(activeV===6&&i!==6){
+    train.speed=2.6;   // resume rolling
+    train.stopTimer=0; // don't get stuck at a station stop
+  }
+  if(activeV===8&&i!==8){
+    const jv=vehicles[8];
+    jetAutoPilot.t=Math.atan2(jv.y-jetAutoPilot.cy,jv.x-jetAutoPilot.cx);
+  }
+  if(activeV===9&&i!==9){
+    // Drop whoever is being carried when player leaves helicopter
+    const hv=vehicles[9];
+    if(hv.carrying){hv.carrying.carrying=false;hv.carrying=null;}
+    hv.prisoner=null;
+    heliAutoPilot.t=Math.atan2(hv.y-heliAutoPilot.cy,hv.x-heliAutoPilot.cx);
+  }
+  activeV=i;
+  document.querySelectorAll('.v-btn').forEach(b=>b.classList.toggle('active',+b.dataset.v===i));
+  document.getElementById('veh-label').textContent=VDEFS[i].label;
+  showMessage('Switched to '+VDEFS[i].label+'!');
+}
+
+// ===== Cannon weapon modes =====
+const WEAPONS=[
+  {id:'fireball',name:'Fireball', cooldown:10,speed:9,life:100,damage:35,r:10,color:'#FFEB3B'},
+  {id:'cannon',  name:'Cannonball',cooldown:22,speed:7,life:140,damage:80,r:14,color:'#90A4AE'},
+  {id:'tntrain', name:'TNT Rain', cooldown:60,speed:10,life:70,damage:120,r:18,color:'#FF6F00'},
+];
+let cannonWep=0;
+function setCannonWep(i){cannonWep=i;showMessage(['🔥 Fireball','💥 Cannonball','🌧️ TNT Rain'][i]);}
+
+// ===== Projectiles, water drops =====
+const projectiles=[];
+const waterDrops=[];
+const policeBullets=[];
+let fireCooldown=0, waterCooldown=0, policeCooldown=0;
+
+// ===== Money =====
+let money=20000;
+function earnMoney(amt){money+=amt;showMessage('+💰'+amt+' (Total: '+money+')');}
+
+// ===== Rocket Auto-Pilot =====
+const rocketOrbit={t:0,cx:WORLD.w/2,cy:WORLD.h/2,r:900};
+function updateRocketAutoPilot(){
+  if(activeV===7)return; // player-controlled
+  rocketOrbit.t+=0.004;
+  const v=vehicles[7];
+  v.x=rocketOrbit.cx+Math.cos(rocketOrbit.t)*rocketOrbit.r;
+  v.y=rocketOrbit.cy+Math.sin(rocketOrbit.t)*rocketOrbit.r;
+  v.angle=rocketOrbit.t+Math.PI/2;
+  v.speed=4;
+  // Auto-shoot at nearest enemy
+  if(rocketCooldown>0){rocketCooldown--;return;}
+  let best=null,bd=Infinity;
+  for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(e.x-v.x,e.y-v.y);if(d<600&&d<bd){best=e;bd=d;}}
+  if(best){
+    const nx=Math.sin(v.angle),ny=-Math.cos(v.angle);
+    playerMissiles.push({x:v.x+nx*32,y:v.y+ny*32,vx:nx*9,vy:ny*9,age:0,life:220,target:best,r:7,damage:110});
+    rocketCooldown=40;
+  }
+}
+
+// ===== Fighter Jet Auto-Pilot =====
+const jetAutoPilot={t:0,cx:WORLD.w/2,cy:WORLD.h/2,r:700};
+const jetMissiles=[];
+let jetMissileCooldown=0;
+function updateJetAutoPilot(){
+  if(activeV===8)return; // player-controlled
+  vehicles[8].gearDown=false; // always retracted when auto-flying
+  jetAutoPilot.t+=0.005;
+  const v=vehicles[8];
+  v.x=jetAutoPilot.cx+Math.cos(jetAutoPilot.t)*jetAutoPilot.r;
+  v.y=jetAutoPilot.cy+Math.sin(jetAutoPilot.t)*jetAutoPilot.r;
+  v.angle=jetAutoPilot.t+Math.PI/2;
+  v.speed=9;
+  // Auto-shoot at nearest enemy in range
+  if(jetMissileCooldown>0){jetMissileCooldown--;return;}
+  let best=null,bd=Infinity;
+  for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(e.x-v.x,e.y-v.y);if(d<700&&d<bd){best=e;bd=d;}}
+  if(best){
+    const nx=Math.sin(v.angle),ny=-Math.cos(v.angle);
+    jetMissiles.push({x:v.x+nx*28,y:v.y+ny*28,vx:nx*12,vy:ny*12,age:0,life:200,target:best,r:7,damage:100});
+    jetMissileCooldown=55;
+  }
+}
+
+// ===== Helicopter Auto-Patrol =====
+const heliAutoPilot={t:1.6,cx:WORLD.w/2,cy:WORLD.h/2,r:750};
+function updateHeliAutoPilot(){
+  if(activeV===9)return;
+  const v=vehicles[9];
+  // If carrying a civilian, autopilot flies to hospital to drop them
+  if(v.carrying){
+    const hosp=SPECIAL_BLDGS.find(b=>b.id==='hospital');
+    const dx=hosp.x-v.x,dy=hosp.y-v.y,d=Math.hypot(dx,dy)||1;
+    v.x+=dx/d*5;v.y+=dy/d*5;v.angle=Math.atan2(dx,-dy);
+    if(d<60){v.carrying.carrying=false;v.carrying=null;savedCount++;score+=150;showMessage('🚁 Civilian airlifted to safety! +💰150');money+=150;}
+    return;
+  }
+  // If carrying a prisoner, fly to jail
+  if(v.prisoner){
+    const jail=SPECIAL_BLDGS.find(b=>b.id==='jail');
+    const dx=jail.x-v.x,dy=jail.y-v.y,d=Math.hypot(dx,dy)||1;
+    v.x+=dx/d*5;v.y+=dy/d*5;v.angle=Math.atan2(dx,-dy);
+    if(d<60){score+=200;money+=200;showMessage('🚔 Criminal jailed by helicopter! +💰200');v.prisoner=null;}
+    return;
+  }
+  // Otherwise orbit and look for civilians to rescue
+  heliAutoPilot.t+=0.0045;
+  v.x=heliAutoPilot.cx+Math.cos(heliAutoPilot.t)*heliAutoPilot.r;
+  v.y=heliAutoPilot.cy+Math.sin(heliAutoPilot.t)*heliAutoPilot.r;
+  v.angle=heliAutoPilot.t+Math.PI/2;
+  v.speed=5;
+  // Auto-rescue injured civilians nearby
+  for(const c of civilians){
+    if(!c.alive||c.carrying||!c.injured)continue;
+    if(Math.hypot(v.x-c.x,v.y-c.y)<90){v.carrying=c;c.carrying=true;showMessage('🚁 Helicopter rescuing civilian!');break;}
+  }
+}
+
+// ===== ISS & Rocket Missiles =====
+const ISS={x:WORLD.w/2,y:190,fireTimer:360,angle:0};
+const issRockets=[];
+const playerMissiles=[];
+let rocketCooldown=0;
+
+// ===== Train System =====
+// Rectangular loop track (clockwise)
+const TRACK_PTS=[
+  [560,530],[1100,530],[1700,530],[2300,530],[2840,530],
+  [2840,1050],[2840,1600],[2840,2150],
+  [2300,2150],[1700,2150],[1100,2150],[560,2150],
+  [560,1600],[560,1050]
+  // loops back to [560,530]
+];
+const TRAIN_STOPS=[
+  {x:1700,y:530,  label:'🚉 North'},
+  {x:2840,y:1340, label:'🚉 East'},
+  {x:1700,y:2150, label:'🚉 South'},
+  {x:560, y:1340, label:'🚉 West'},
+];
+// Precompute cumulative distances along track (closed loop)
+const _tPts=[...TRACK_PTS,[560,530]]; // closed
+const _tSegs=_tPts.slice(1).map((p,i)=>{const q=_tPts[i];return Math.hypot(p[0]-q[0],p[1]-q[1]);});
+const _tCum=[0];for(const s of _tSegs)_tCum.push(_tCum[_tCum.length-1]+s);
+const TRACK_LEN=_tCum[_tCum.length-1];
+function getTrackPos(dist){
+  let d=((dist%TRACK_LEN)+TRACK_LEN)%TRACK_LEN;
+  let i=0;while(i<_tSegs.length-1&&_tCum[i+1]<d)i++;
+  const t=(d-_tCum[i])/(_tSegs[i]||1);
+  const ax=_tPts[i][0],ay=_tPts[i][1],bx=_tPts[i+1][0],by=_tPts[i+1][1];
+  return{x:ax+(bx-ax)*t,y:ay+(by-ay)*t,angle:Math.atan2(by-ay,bx-ax)};
+}
+// Find dist values for each stop
+TRAIN_STOPS.forEach(s=>{
+  let best=Infinity,bestD=0;
+  for(let d=0;d<TRACK_LEN;d+=5){const p=getTrackPos(d);const dd=Math.hypot(p.x-s.x,p.y-s.y);if(dd<best){best=dd;bestD=d;}}
+  s.dist=bestD;
+});
+const train={dist:0,speed:2.6,stopTimer:0,lastStop:-1,smokeT:0};
+const TRAIN_CARS=3; // loco + 2 cars
+const CAR_GAP=72;
+
+function updateTrain(){
+  if(activeV===6)return; // player-driven — handled in updateVehicle
+  if(train.stopTimer>0){train.stopTimer--;return;}
+  train.dist=(train.dist+train.speed)%TRACK_LEN;
+  // Check if near a stop
+  for(let si=0;si<TRAIN_STOPS.length;si++){
+    const s=TRAIN_STOPS[si];
+    if(si===train.lastStop)continue;
+    let d=Math.abs(train.dist-s.dist);
+    if(d>TRACK_LEN/2)d=TRACK_LEN-d;
+    if(d<8){train.stopTimer=160;train.lastStop=si;showMessage(s.label+' — doors open!');break;}
+  }
+  // Damage vehicles on track
+  const loco=getTrackPos(train.dist);
+  for(const v of vehicles){
+    if(v.hp<=0)continue;
+    if(Math.hypot(v.x-loco.x,v.y-loco.y)<36){
+      v.hp-=2;v.shield=8;addPart(v.x,v.y,'#F44336',8,4);
+      if(v.hp<=10)showMessage('⚠️ Get off the tracks!');
+    }
+  }
+  // Electric sparks from pantograph
+  train.smokeT++;
+  if(train.smokeT%18===0&&train.speed>0.5){const p=getTrackPos(train.dist);addPart(p.x,p.y,'rgba(100,200,255,0.9)',3,2.5,2,14);addPart(p.x,p.y,'#FFEB3B',2,2,1.5,10);}
+}
+
+// ===== Trash Piles =====
+const trashPiles=[];
+let collectedCount=0;
+function spawnTrash(cx,cy,forced){
+  let x,y;
+  if(forced){x=cx;y=cy;}
+  else{
+    const onH=Math.random()<0.5;
+    if(onH){const ry=ROADS_H[Math.floor(Math.random()*ROADS_H.length)];x=200+Math.random()*(WORLD.w-400);y=ry+(Math.random()-0.5)*45;}
+    else{const rx=ROADS_V[Math.floor(Math.random()*ROADS_V.length)];x=rx+(Math.random()-0.5)*45;y=200+Math.random()*(WORLD.h-400);}
+  }
+  if(trashPiles.some(t=>Math.hypot(t.x-x,t.y-y)<28))return;
+  trashPiles.push({x,y,r:13+Math.random()*8,seed:(Math.random()*200)|0,alive:true});
+}
+(function(){for(let i=0;i<50;i++)spawnTrash();})();
+
+// ===== Pizza Items =====
+const pizzaItems=[];
+let pizzaCollected=0;
+function spawnPizza(cx,cy,forced){
+  let x,y;
+  if(forced){x=cx;y=cy;}
+  else{
+    const onH=Math.random()<0.5;
+    if(onH){const ry=ROADS_H[Math.floor(Math.random()*ROADS_H.length)];x=200+Math.random()*(WORLD.w-400);y=ry+(Math.random()-0.5)*40;}
+    else{const rx=ROADS_V[Math.floor(Math.random()*ROADS_V.length)];x=rx+(Math.random()-0.5)*40;y=200+Math.random()*(WORLD.h-400);}
+  }
+  if(pizzaItems.some(p=>Math.hypot(p.x-x,p.y-y)<30))return;
+  pizzaItems.push({x,y,r:13+Math.random()*5,alive:true,seed:Math.random()*100|0});
+}
+(function(){for(let i=0;i<45;i++)spawnPizza();})();
+
+// ===== Dirty Road Spots =====
+const dirtySpots=[];
+let cleanedCount=0;
+function spawnDirtySpot(cx,cy,forced){
+  let x,y;
+  if(forced){x=cx;y=cy;}
+  else{
+    const onH=Math.random()<0.5;
+    if(onH){const ry=ROADS_H[Math.floor(Math.random()*ROADS_H.length)];x=150+Math.random()*(WORLD.w-300);y=ry+(Math.random()-0.5)*55;}
+    else{const rx=ROADS_V[Math.floor(Math.random()*ROADS_V.length)];x=rx+(Math.random()-0.5)*55;y=150+Math.random()*(WORLD.h-300);}
+  }
+  if(dirtySpots.some(s=>Math.hypot(s.x-x,s.y-y)<30))return;
+  dirtySpots.push({x,y,r:20+Math.random()*16,seed:Math.random()*100|0});
+}
+(function(){for(let i=0;i<55;i++)spawnDirtySpot();})();
+
+// ===== Civilians =====
+const civilians=[];
+let savedCount=0, firesOut=0;
+function spawnCivilian(x,y){civilians.push({x,y,vx:(Math.random()-0.5)*2,vy:(Math.random()-0.5)*2,alive:true,injured:false,carrying:false,t:Math.random()*Math.PI*2});}
+// Pre-seed some civilians on roads
+(function(){for(let i=0;i<18;i++){const rx=ROADS_V[Math.floor(Math.random()*ROADS_V.length)];const ry=100+Math.random()*(WORLD.h-200);spawnCivilian(rx+(Math.random()-0.5)*40,ry);}})();
+
+// ===== Particles / fires / craters =====
+const particles=[];
+const fires=[];
+const craters=[];
+function addPart(x,y,color,count,speed,size=3,life=35){for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,s=speed*(0.3+Math.random()*0.8);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,age:0,life:life+Math.random()*20,color,size:size*(0.5+Math.random())});}}
+function addFire(x,y,count){const c=['#FFEB3B','#FF9800','#F44336','#FF6F00'];for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,s=2+Math.random()*5;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1.5,age:0,life:28+Math.random()*18,color:c[Math.floor(Math.random()*c.length)],size:4+Math.random()*6});}}
+function startFire(x,y,big=false){if(fires.some(f=>Math.hypot(f.x-x,f.y-y)<(big?60:30)))return;fires.push({x,y,t:0,life:(big?900:600)+Math.random()*300,age:0,r:big?38:22});}
+
+// ===== Enemy bullets =====
+const eBullets=[];
+
+// ===== Enemies =====
+const enemies=[];
+let wave=1,waveTimer=0,kills=0,score=0;
+function spawnEnemy(type){
+  const side=Math.floor(Math.random()*4);
+  let x,y;
+  if(side===0){x=60;y=Math.random()*WORLD.h;}else if(side===1){x=WORLD.w-60;y=Math.random()*WORLD.h;}else if(side===2){x=Math.random()*WORLD.w;y=60;}else{x=Math.random()*WORLD.w;y=WORLD.h-60;}
+  if(Math.random()<0.7){if(side<=1){const ny=ROADS_H.reduce((a,b)=>Math.abs(b-y)<Math.abs(a-y)?b:a);y=ny;}else{const nx=ROADS_V.reduce((a,b)=>Math.abs(b-x)<Math.abs(a-x)?b:a);x=nx;}}
+  enemies.push({type,x,y,vx:0,vy:0,angle:0,hp:type==='tank'?120:type==='bomber'?70:40,maxHp:type==='tank'?120:type==='bomber'?70:40,speed:type==='tank'?1.3:type==='bomber'?0:2.2,w:type==='tank'?58:type==='bomber'?80:28,h:type==='tank'?44:type==='bomber'?28:28,fireTimer:60+Math.random()*80,t:Math.random()*Math.PI*2,alive:true,bombTimer:type==='bomber'?90+Math.random()*60:0,wet:0});
+}
+function startWave(n){const count=3+Math.floor(n*1.5);for(let i=0;i<count;i++){const r=Math.random();setTimeout(()=>spawnEnemy(r<0.5?'runner':r<0.8?'tank':'bomber'),i*700+400);}showMessage('⚔️ Wave '+n+'! Enemies incoming!');document.getElementById('wave').textContent=n;}
+startWave(1);
+
+// ===== Camera =====
+const cam={x:0,y:0,freeUntil:0};
+function camFollows(){return Date.now()>cam.freeUntil;}
+let drag=null;
+canvas.addEventListener('mousedown',e=>{if(e.button!==0)return;drag={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y};});
+addEventListener('mousemove',e=>{if(!drag)return;cam.x=Math.max(0,Math.min(WORLD.w-W,drag.cx-(e.clientX-drag.x)));cam.y=Math.max(0,Math.min(WORLD.h-H,drag.cy-(e.clientY-drag.y)));cam.freeUntil=Date.now()+2500;});
+addEventListener('mouseup',()=>drag=null);
+function w2s(x,y){return[x-cam.x,y-cam.y];}
+
+// ===== Input =====
+const keys={};
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();keys[k]=true;
+  if(k==='1')switchVehicle(0);else if(k==='2')switchVehicle(1);else if(k==='3')switchVehicle(2);else if(k==='4')switchVehicle(3);else if(k==='5')switchVehicle(4);else if(k==='6')switchVehicle(5);else if(k==='7')switchVehicle(6);else if(k==='8')switchVehicle(7);else if(k==='9')switchVehicle(8);else if(k==='0')switchVehicle(9);else if(k==='p')switchVehicle(10);else if(k==='m')switchVehicle(11);
+  if(k==='q')setCannonWep(0);else if(k==='w'&&activeV===0)setCannonWep(1);else if(k==='e'&&activeV===0)setCannonWep(2);
+  if(k==='t'&&activeV===0){const v=vehicles[0];if(v.tntStock>0){v.tntStock--;const c={x:v.x,y:v.y,alive:true,lit:true,litTimer:180};tntCrates.push(c);showMessage('💣 TNT placed! ('+(v.tntStock||0)+' left)');}else showMessage('No TNT!');}
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();
+});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+let spaceHeld=false,spacePressed=false;
+function updateSpace(){const p=!!keys[' '];spacePressed=p&&!spaceHeld;spaceHeld=p;}
+
+function showMessage(t){const m=document.getElementById('message');m.textContent=t;m.style.opacity=1;clearTimeout(m._t);m._t=setTimeout(()=>m.style.opacity=0,2200);}
+
+// ===== Explosion =====
+function explode(x,y,r,dmg,friendly=false){
+  craters.push({x,y,r});
+  addFire(x,y,40);addPart(x,y,'#FFEB3B',22,8,5,50);addPart(x,y,'#90A4AE',20,6,4,40);
+  for(let a=0;a<Math.PI*2;a+=0.22)particles.push({x,y,vx:Math.cos(a)*10,vy:Math.sin(a)*10,age:0,life:18,color:'rgba(255,200,50,0.5)',size:5});
+  for(const e of enemies){const d=Math.hypot(e.x-x,e.y-y);if(d<r+e.w/2){const f=1-d/(r+e.w/2);e.hp-=dmg*f;if(e.hp<=0)killEnemy(e);}}
+  if(!friendly){for(const v of vehicles){if(v.shield>0)continue;const d=Math.hypot(v.x-x,v.y-y);if(d<r+25){v.hp-=dmg*0.5*(1-d/(r+25));v.shield=45;addPart(v.x,v.y,'#F44336',14,4);}}}
+  for(const b of BUILDINGS){if(!b.alive)continue;const d=Math.hypot(b.x-x,b.y-y);if(d<r+b.w/2){b.hp-=dmg*0.3;if(!b.onFire&&Math.random()<0.4)b.onFire=true;if(b.hp<=0){b.alive=false;addFire(b.x,b.y,30);}}}
+  for(const t of tntCrates){if(!t.alive)continue;if(Math.hypot(t.x-x,t.y-y)<r+22){t.lit=true;t.litTimer=10+Math.random()*8;}}
+  startFire(x,y,true);
+  // Scatter trash on nearby roads from explosion
+  for(let i=0;i<3;i++){const ox=(Math.random()-0.5)*r*2,oy=(Math.random()-0.5)*r*2;if(onRoad(x+ox,y+oy))spawnTrash(x+ox,y+oy,true);}
+  // Splatter dirt on nearby roads from explosion
+  for(let i=0;i<4;i++){const ox=(Math.random()-0.5)*r*2.2,oy=(Math.random()-0.5)*r*2.2;if(onRoad(x+ox,y+oy))spawnDirtySpot(x+ox,y+oy,true);}
+  // Injure nearby civilians
+  for(const c of civilians){if(!c.alive||c.carrying)continue;if(Math.hypot(c.x-x,c.y-y)<r+30){c.injured=true;c.vx=(Math.random()-0.5)*4;c.vy=(Math.random()-0.5)*4;}}
+}
+function killEnemy(e){if(!e.alive)return;e.alive=false;kills++;const pts=e.type==='tank'?150:e.type==='bomber'?100:60;score+=pts;money+=pts;addFire(e.x,e.y,30);addPart(e.x,e.y,'#FFEB3B',18,5);startFire(e.x,e.y);}
+
+// ===== Vehicle actions (Space) =====
+function doAction(v){
+  // Car Shop — any vehicle can use it
+  const shop=SPECIAL_BLDGS.find(b=>b.id==='carshop');
+  if(shop&&Math.hypot(v.x-shop.x,v.y-shop.y)<130){
+    const ITEMS=[
+      {name:'⚡ Speed Boost',cost:500,action:()=>{v.maxSpeed=Math.min(v.maxSpeed*1.2,18);showMessage('⚡ Speed boosted! +20%');}},
+      {name:'❤️ Full Repair',cost:300,action:()=>{v.hp=v.maxHp;showMessage('❤️ Fully repaired!');}},
+      {name:'🚀 Missile Ammo',cost:800,action:()=>{vehicles[7].missilePack=(vehicles[7].missilePack||0)+5;showMessage('🚀 +5 missiles loaded!');}},
+    ];
+    const buyable=ITEMS.filter(it=>money>=it.cost);
+    if(buyable.length>0){const item=buyable[0];money-=item.cost;item.action();showMessage('🏪 Bought: '+item.name+' | 💰'+money+' left');}
+    else showMessage('🏪 Car Shop: not enough 💰! Earn coins by defeating enemies.');
+    return;
+  }
+  // ISS Docking — rocket only
+  if(v.type==='rocket'&&Math.hypot(v.x-ISS.x,v.y-ISS.y)<130){
+    score+=500;money+=500;
+    addPart(ISS.x,ISS.y,'#FFEB3B',30,6,5,50);addPart(ISS.x,ISS.y,'rgba(100,200,255,0.8)',20,4);
+    showMessage('🛸 Docked with ISS! +💰500');return;
+  }
+  if(v.type==='cannon'){
+    // shoot fireball/cannonball/TNT
+    const w=WEAPONS[cannonWep];
+    if(fireCooldown>0)return;
+    const nx=Math.sin(v.angle),ny=-Math.cos(v.angle);
+    if(w.id==='tntrain'){
+      if(!v.tntStock||v.tntStock<=0){showMessage('No TNT!');return;}
+      v.tntStock=(v.tntStock||5)-1;
+      for(let i=-2;i<=2;i++){const sp=i*0.18;projectiles.push({x:v.x+nx*30,y:v.y+ny*30,vx:Math.sin(v.angle+sp)*w.speed,vy:-Math.cos(v.angle+sp)*w.speed,age:0,life:w.life,type:w.id,r:w.r,damage:w.damage,color:w.color});}
+    } else {
+      projectiles.push({x:v.x+nx*30,y:v.y+ny*30,vx:nx*w.speed,vy:ny*w.speed,age:0,life:w.life,type:w.id,r:w.r,damage:w.damage,color:w.color});
+    }
+    fireCooldown=w.cooldown;
+    addFire(v.x+nx*32,v.y+ny*32,8);
+  } else if(v.type==='firetruck'){
+    // spray water - continuous
+    if(waterCooldown>0)return;
+    const nx=Math.sin(v.angle),ny=-Math.cos(v.angle);
+    for(let i=-1;i<=1;i++){
+      const sp=i*0.25;
+      const spd=8+Math.random()*3;
+      waterDrops.push({x:v.x+nx*38,y:v.y+ny*38,vx:Math.sin(v.angle+sp)*spd+(Math.random()-0.5)*0.8,vy:-Math.cos(v.angle+sp)*spd+(Math.random()-0.5)*0.8,age:0,life:55,r:7});
+    }
+    waterCooldown=3;
+  } else if(v.type==='ambulance'){
+    // pick up civilian or drop off at hospital
+    if(v.carrying){
+      // Check near hospital
+      const hosp=SPECIAL_BLDGS.find(b=>b.id==='hospital');
+      if(Math.hypot(v.x-hosp.x,v.y-hosp.y)<130){
+        v.carrying=null; savedCount++;score+=120;
+        addPart(v.x,v.y,'#FFEB3B',20,4);addPart(v.x,v.y,'#81C784',12,3);
+        showMessage('🏥 Civilian saved! +120 ⭐');
+      } else showMessage('🏥 Drive to the HOSPITAL to drop off!');
+    } else {
+      // Find nearest injured civilian
+      let best=null,bd=Infinity;
+      for(const c of civilians){if(!c.alive||c.carrying||!c.injured)continue;const d=Math.hypot(v.x-c.x,v.y-c.y);if(d<120&&d<bd){best=c;bd=d;}}
+      // Also pick up non-injured if no injured nearby
+      if(!best){for(const c of civilians){if(!c.alive||c.carrying)continue;const d=Math.hypot(v.x-c.x,v.y-c.y);if(d<80&&d<bd){best=c;bd=d;}}}
+      if(best){v.carrying=best;best.carrying=true;addPart(best.x,best.y,'#FF8A65',10,3);showMessage('🚑 Picked up civilian! Drive to 🏥 Hospital!');}
+      else showMessage('No civilians nearby. Find an injured person!');
+    }
+  } else if(v.type==='rocket'){
+    if(rocketCooldown>0)return;
+    let best=null,bd=Infinity;
+    for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(v.x-e.x,v.y-e.y);if(d<bd){best=e;bd=d;}}
+    const nx=Math.sin(v.angle),ny=-Math.cos(v.angle);
+    playerMissiles.push({x:v.x+nx*32,y:v.y+ny*32,vx:nx*9,vy:ny*9,age:0,life:220,target:best,r:7,damage:110});
+    addFire(v.x+nx*34,v.y+ny*34,10);rocketCooldown=22;
+    showMessage('🚀 Missile away!');
+  } else if(v.type==='helicopter'){
+    const jail=SPECIAL_BLDGS.find(b=>b.id==='jail');
+    const hosp=SPECIAL_BLDGS.find(b=>b.id==='hospital');
+    // Drop prisoner at jail
+    if(v.prisoner){
+      if(jail&&Math.hypot(v.x-jail.x,v.y-jail.y)<130){
+        score+=200;money+=200;
+        addPart(v.x,v.y,'#FFEB3B',22,5,4,40);addPart(v.x,v.y,'#546E7A',14,3);
+        showMessage('🚔 Criminal JAILED! +💰200');v.prisoner=null;
+      } else showMessage('🚁 Fly to 🚔 JAIL to lock them up!');
+      return;
+    }
+    // Drop civilian at hospital
+    if(v.carrying){
+      if(hosp&&Math.hypot(v.x-hosp.x,v.y-hosp.y)<130){
+        v.carrying.carrying=false;v.carrying=null;savedCount++;score+=150;money+=150;
+        addPart(v.x,v.y,'#FFEB3B',20,5);addPart(v.x,v.y,'#81C784',14,3);
+        showMessage('🚁 Civilian airlifted to safety! +💰150');
+      } else showMessage('🚁 Fly to 🏥 HOSPITAL to drop them off!');
+      return;
+    }
+    // Grab enemy (arrest from above)
+    let bestHA=null,bdHA=Infinity;
+    for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(v.x-e.x,v.y-e.y);if(d<110&&d<bdHA){bestHA=e;bdHA=d;}}
+    if(bestHA){
+      v.prisoner=bestHA;bestHA.alive=false;
+      addPart(v.x,v.y,'#FF9800',18,5,4,35);
+      showMessage('🚁 BAD GUY GRABBED! Fly to 🚔 JAIL!');return;
+    }
+    // Pick up civilian
+    let bestHC=null,bdHC=Infinity;
+    for(const c of civilians){if(!c.alive||c.carrying)continue;const d=Math.hypot(v.x-c.x,v.y-c.y);if(d<110&&d<bdHC){bestHC=c;bdHC=d;}}
+    if(bestHC){
+      v.carrying=bestHC;bestHC.carrying=true;
+      addPart(v.x,v.y,'#FF8A65',12,3);
+      showMessage('🚁 Civilian grabbed! Fly to 🏥 HOSPITAL!');return;
+    }
+    showMessage('🚁 No one nearby! Fly over people or enemies to grab them.');
+  } else if(v.type==='jet'){
+    if(jetMissileCooldown>0)return;
+    let bestJ=null,bdJ=Infinity;
+    for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(v.x-e.x,v.y-e.y);if(d<bdJ){bestJ=e;bdJ=d;}}
+    const nxJ=Math.sin(v.angle),nyJ=-Math.cos(v.angle);
+    jetMissiles.push({x:v.x+nxJ*30,y:v.y+nyJ*30,vx:nxJ*12,vy:nyJ*12,age:0,life:220,target:bestJ,r:7,damage:100});
+    addFire(v.x+nxJ*32,v.y+nyJ*32,10);jetMissileCooldown=18;
+    showMessage('✈️ Missile away!');
+  } else if(v.type==='garbage'){
+    // Dump load at garbage dump
+    const dump=SPECIAL_BLDGS.find(b=>b.id==='dump');
+    if((v.cargo||0)>0&&Math.hypot(v.x-dump.x,v.y-dump.y)<140){
+      const pts=(v.cargo||0)*30;score+=pts;collectedCount+=(v.cargo||0);
+      addPart(v.x,v.y,'#A5D6A7',22,5,4,30);addPart(v.x,v.y,'#FFEB3B',14,4);
+      showMessage('🗑️ Dumped '+(v.cargo||0)+' bags! +'+pts+'⭐');v.cargo=0;
+    } else if((v.cargo||0)>0) showMessage('🗑️ Drive to the GARBAGE DUMP to unload!');
+    else showMessage('No garbage loaded yet! Drive over trash bags.');
+  } else if(v.type==='cleaner'){
+    // Power wash — clean large radius
+    let cleaned=0;
+    for(let i=dirtySpots.length-1;i>=0;i--){
+      if(Math.hypot(v.x-dirtySpots[i].x,v.y-dirtySpots[i].y)<130){dirtySpots.splice(i,1);cleaned++;cleanedCount++;score+=20;}
+    }
+    addPart(v.x,v.y,'#B3E5FC',32,7,5,38);addPart(v.x,v.y,'#E1F5FE',20,5,4,28);
+    if(cleaned>0)showMessage('🚿 Power wash! '+cleaned+' spots! +'+(cleaned*20)+'⭐');
+    else showMessage('No dirt nearby to power wash!');
+  } else if(v.type==='police'){
+    // shoot bullet at nearest enemy
+    if(policeCooldown>0)return;
+    // Find nearest enemy
+    let best=null,bd=Infinity;
+    for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(v.x-e.x,v.y-e.y);if(d<bd){best=e;bd=d;}}
+    const nx=Math.sin(v.angle),ny=-Math.cos(v.angle);
+    // Aim toward enemy if close, else aim forward
+    let vx2=nx*10,vy2=ny*10;
+    if(best&&bd<500){const dx=best.x-v.x,dy=best.y-v.y,d=Math.hypot(dx,dy)||1;vx2=(dx/d)*10;vy2=(dy/d)*10;}
+    policeBullets.push({x:v.x+nx*30,y:v.y+ny*30,vx:vx2,vy:vy2,age:0,life:90,damage:45,r:5,target:best});
+    policeBullets.push({x:v.x+nx*30,y:v.y+ny*30,vx:vx2+(Math.random()-0.5)*1.5,vy:vy2+(Math.random()-0.5)*1.5,age:0,life:90,damage:30,r:4,target:null});
+    policeCooldown=12;
+    addPart(v.x+nx*32,v.y+ny*32,'#FFEB3B',8,4);
+  }
+}
+
+// ===== Update =====
+function updateVehicle(v,isActive){
+  if(v.shield>0)v.shield--;
+  v.sirenPhase=(v.sirenPhase||0)+0.22;
+  if(!isActive){
+    // Parked vehicles drift back to their slot slowly
+    v.speed=Math.max(0,v.speed*0.85);
+    return;
+  }
+  // ===== Rocket: free flight — no road/building collision =====
+  if(v.type==='rocket'){
+    const kUp2=keys['arrowup']||keys['w'];
+    const kDown2=keys['arrowdown']||keys['s'];
+    const kLeft2=keys['arrowleft']||keys['a'];
+    const kRight2=keys['arrowright']||keys['d'];
+    let dx2=0,dy2=0;
+    if(kLeft2)dx2-=1;if(kRight2)dx2+=1;if(kUp2)dy2-=1;if(kDown2)dy2+=1;
+    if(dx2||dy2){
+      const l=Math.hypot(dx2,dy2);dx2/=l;dy2/=l;
+      const ta=Math.atan2(dx2,-dy2);
+      let diff=ta-v.angle;
+      while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+      const ts=v.turn*2.5;
+      if(Math.abs(diff)<ts)v.angle=ta;else v.angle+=Math.sign(diff)*ts;
+      v.speed=Math.min(v.maxSpeed,v.speed+v.accel);
+      v.x=Math.max(20,Math.min(WORLD.w-20,v.x+dx2*v.speed));
+      v.y=Math.max(20,Math.min(WORLD.h-20,v.y+dy2*v.speed));
+      if(Math.random()<0.65){const enx=Math.sin(v.angle),eny=-Math.cos(v.angle);addFire(v.x-enx*28,v.y-eny*28,3);addPart(v.x-enx*26,v.y-eny*26,'#FF6F00',2,2,3,18);}
+    } else v.speed=Math.max(0,v.speed-v.accel*1.2);
+    if(rocketCooldown>0)rocketCooldown--;
+    if(spacePressed)doAction(v);
+    if(keys['arrowup']||keys['arrowdown']||keys['arrowleft']||keys['arrowright'])cam.freeUntil=0;
+    if(camFollows()){cam.x=Math.max(0,Math.min(WORLD.w-W,v.x-W/2));cam.y=Math.max(0,Math.min(WORLD.h-H,v.y-H/2));}
+    return;
+  }
+
+  // ===== Jet: free flight over buildings — no collision =====
+  if(v.type==='jet'){
+    const kUpJ=keys['arrowup']||keys['w'];
+    const kDownJ=keys['arrowdown']||keys['s'];
+    const kLeftJ=keys['arrowleft']||keys['a'];
+    const kRightJ=keys['arrowright']||keys['d'];
+    let dxJ=0,dyJ=0;
+    if(kLeftJ)dxJ-=1;if(kRightJ)dxJ+=1;if(kUpJ)dyJ-=1;if(kDownJ)dyJ+=1;
+    if(dxJ||dyJ){
+      const l=Math.hypot(dxJ,dyJ);dxJ/=l;dyJ/=l;
+      const ta=Math.atan2(dxJ,-dyJ);
+      let diff=ta-v.angle;
+      while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+      const ts=v.turn*2.5;
+      if(Math.abs(diff)<ts)v.angle=ta;else v.angle+=Math.sign(diff)*ts;
+      v.speed=Math.min(v.maxSpeed,v.speed+v.accel);
+      v.x=Math.max(20,Math.min(WORLD.w-20,v.x+dxJ*v.speed));
+      v.y=Math.max(20,Math.min(WORLD.h-20,v.y+dyJ*v.speed));
+      // Contrails
+      if(Math.random()<0.55){const enxJ=Math.sin(v.angle),enyJ=-Math.cos(v.angle);addPart(v.x-enxJ*24,v.y-enyJ*24,'rgba(200,220,255,0.45)',1,0.4,3,32);addPart(v.x-enxJ*24+6,v.y-enyJ*24+6,'rgba(200,220,255,0.35)',1,0.4,2.5,28);}
+    } else v.speed=Math.max(4,v.speed-v.accel*0.6); // jets keep minimum speed
+    // Landing gear: retract on takeoff, extend on approach
+    if(v.speed>8&&v.gearDown){
+      v.gearDown=false;
+      showMessage('🛫 Gear UP! Taking off! ✈️');
+      addPart(v.x,v.y,'#90A4AE',12,3,3,28);
+    }
+    if(v.speed<3.5&&!v.gearDown){
+      v.gearDown=true;
+      showMessage('🛬 Gear DOWN! ✈️');
+    }
+    if(jetMissileCooldown>0)jetMissileCooldown--;
+    if(spacePressed)doAction(v);
+    if(keys['arrowup']||keys['arrowdown']||keys['arrowleft']||keys['arrowright'])cam.freeUntil=0;
+    if(camFollows()){cam.x=Math.max(0,Math.min(WORLD.w-W,v.x-W/2));cam.y=Math.max(0,Math.min(WORLD.h-H,v.y-H/2));}
+    return;
+  }
+
+  // ===== Helicopter: free flight + rescue/arrest =====
+  if(v.type==='helicopter'){
+    const kUpH=keys['arrowup']||keys['w'];
+    const kDownH=keys['arrowdown']||keys['s'];
+    const kLeftH=keys['arrowleft']||keys['a'];
+    const kRightH=keys['arrowright']||keys['d'];
+    let dxH=0,dyH=0;
+    if(kLeftH)dxH-=1;if(kRightH)dxH+=1;if(kUpH)dyH-=1;if(kDownH)dyH+=1;
+    if(dxH||dyH){
+      const l=Math.hypot(dxH,dyH);dxH/=l;dyH/=l;
+      const ta=Math.atan2(dxH,-dyH);
+      let diff=ta-v.angle;
+      while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+      const ts=v.turn*2.5;
+      if(Math.abs(diff)<ts)v.angle=ta;else v.angle+=Math.sign(diff)*ts;
+      v.speed=Math.min(v.maxSpeed,v.speed+v.accel);
+      v.x=Math.max(20,Math.min(WORLD.w-20,v.x+dxH*v.speed));
+      v.y=Math.max(20,Math.min(WORLD.h-20,v.y+dyH*v.speed));
+    } else v.speed=Math.max(0,v.speed-v.accel*1.5);
+    // Carry civilian/prisoner with helicopter
+    if(v.carrying){v.carrying.x=v.x;v.carrying.y=v.y+30;}
+    if(spacePressed)doAction(v);
+    if(keys['arrowup']||keys['arrowdown']||keys['arrowleft']||keys['arrowright'])cam.freeUntil=0;
+    if(camFollows()){cam.x=Math.max(0,Math.min(WORLD.w-W,v.x-W/2));cam.y=Math.max(0,Math.min(WORLD.h-H,v.y-H/2));}
+    return;
+  }
+
+  // ===== Train: special track-following control =====
+  if(v.type==='train'){
+    const kUp=keys['arrowup'];const kDown=keys['arrowdown'];
+    if(kUp)  train.speed=Math.min(v.maxSpeed,train.speed+v.accel);
+    else if(kDown) train.speed=Math.max(0,train.speed-v.accel*3);
+    // no auto-deceleration — hold speed until braked
+    train.dist=(train.dist+train.speed)%TRACK_LEN;
+    // Sync vehicle position to track
+    const tp=getTrackPos(train.dist);v.x=tp.x;v.y=tp.y;v.angle=tp.angle+Math.PI/2;v.speed=train.speed;
+    // Damage other vehicles on the track
+    for(const ov of vehicles){if(ov===v||ov.hp<=0)continue;if(Math.hypot(ov.x-v.x,ov.y-v.y)<38){ov.hp-=2.5;ov.shield=10;addPart(ov.x,ov.y,'#F44336',10,4);if(ov.hp<=10)showMessage('⚠️ Get off the tracks!');}}
+    // Electric sparks from pantograph when moving
+    train.smokeT++;if(train.smokeT%15===0&&train.speed>0.5){addPart(v.x,v.y,'rgba(100,200,255,0.9)',4,2.5,2,14);addPart(v.x,v.y,'#FFEB3B',2,2,1.5,10);}
+    // Space = HONK
+    if(spacePressed){showMessage('📯 CHOO CHOO! 🚂');addPart(v.x,v.y,'rgba(220,220,220,0.8)',20,4,6,50);}
+    // Camera follows
+    if(keys['arrowup']||keys['arrowdown'])cam.freeUntil=0;
+    if(camFollows()){cam.x=Math.max(0,Math.min(WORLD.w-W,v.x-W/2));cam.y=Math.max(0,Math.min(WORLD.h-H,v.y-H/2));}
+    return;
+  }
+
+  const kUp=keys['arrowup']||(keys['w']&&activeV!==0);  // W only moves if not cannon (cannon uses W for weapon)
+  const kDown=keys['arrowdown']||keys['s'];
+  const kLeft=keys['arrowleft']||keys['a'];
+  const kRight=keys['arrowright']||keys['d'];
+  let dx=0,dy=0;
+  if(kLeft)dx-=1;if(kRight)dx+=1;if(kUp)dy-=1;if(kDown)dy+=1;
+  if(dx||dy){
+    const l=Math.hypot(dx,dy);dx/=l;dy/=l;
+    const ta=Math.atan2(dx,-dy);
+    let diff=ta-v.angle;
+    while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+    const ts=v.turn*2.5;
+    if(Math.abs(diff)<ts)v.angle=ta;else v.angle+=Math.sign(diff)*ts;
+    v.speed=Math.min(v.maxSpeed,v.speed+v.accel);
+    const align=Math.max(0.35,Math.cos(diff));
+    let nx2=v.x+dx*v.speed*align, ny2=v.y+dy*v.speed*align;
+    const block=(px,py)=>BUILDINGS.some(b=>b.alive&&px>b.x-b.w/2-14&&px<b.x+b.w/2+14&&py>b.y-b.h/2-14&&py<b.y+b.h/2+14)||SPECIAL_BLDGS.some(b=>px>b.x-b.w/2-14&&px<b.x+b.w/2+14&&py>b.y-b.h/2-14&&py<b.y+b.h/2+14);
+    if(!block(nx2,v.y))v.x=Math.max(20,Math.min(WORLD.w-20,nx2));
+    if(!block(v.x,ny2))v.y=Math.max(20,Math.min(WORLD.h-20,ny2));
+    if(Math.random()<0.4){const nx3=Math.sin(v.angle),ny3=-Math.cos(v.angle);addPart(v.x-nx3*28,v.y-ny3*28,'#B0BEC5',2,2,2.5,18);}
+  } else v.speed=Math.max(0,v.speed-v.accel*2);
+
+  // Cooldowns
+  if(fireCooldown>0)fireCooldown--;
+  if(waterCooldown>0)waterCooldown--;
+  if(policeCooldown>0)policeCooldown--;
+
+  // Auto-collect trash when garbage truck drives over it
+  if(v.type==='garbage'&&v.speed>0.3){
+    for(let i=trashPiles.length-1;i>=0;i--){
+      const t=trashPiles[i];if(!t.alive)continue;
+      if(Math.hypot(v.x-t.x,v.y-t.y)<t.r+22){
+        t.alive=false;v.cargo=(v.cargo||0)+1;
+        addPart(v.x,v.y,'#A5D6A7',5,2.5,2.5,16);
+        if((v.cargo||0)===1)showMessage('🗑️ Trash collected! Drive to DUMP to unload!');
+      }
+    }
+  }
+
+  // Auto-collect pizza when pizza vehicles drive over them
+  if((v.type==='pizzacar'||v.type==='pizzabike')&&v.speed>0.3){
+    for(let i=pizzaItems.length-1;i>=0;i--){
+      const p=pizzaItems[i];if(!p.alive)continue;
+      if(Math.hypot(v.x-p.x,v.y-p.y)<p.r+20){
+        p.alive=false;money+=30;score+=30;pizzaCollected++;
+        addPart(v.x,v.y,'#FFA000',6,3,3,20);addPart(v.x,v.y,'#FFEE58',4,2.5,2,16);
+        if(pizzaCollected%5===0||pizzaCollected===1)showMessage('🍕 Pizza delivered! +💰30 (Total: '+pizzaCollected+')');
+      }
+    }
+  }
+
+  // Auto-clean dirty spots when cleaner truck drives over them
+  if(v.type==='cleaner'&&v.speed>0.3){
+    for(let i=dirtySpots.length-1;i>=0;i--){
+      const s=dirtySpots[i];
+      if(Math.hypot(v.x-s.x,v.y-s.y)<s.r+18){
+        dirtySpots.splice(i,1);cleanedCount++;score+=15;
+        addPart(v.x,v.y,'#B3E5FC',6,3,3,18);
+      }
+    }
+  }
+
+  // Space: hold for firetruck water, press once for others
+  if(v.type==='firetruck'){if(keys[' '])doAction(v);}
+  else if(spacePressed)doAction(v);
+
+  // Carry civilian with ambulance
+  if(v.carrying){v.carrying.x=v.x-Math.sin(v.angle)*10;v.carrying.y=v.y+Math.cos(v.angle)*10;}
+
+  // Camera
+  if(keys['arrowup']||keys['arrowdown']||keys['arrowleft']||keys['arrowright'])cam.freeUntil=0;
+  if(camFollows()){cam.x=Math.max(0,Math.min(WORLD.w-W,v.x-W/2));cam.y=Math.max(0,Math.min(WORLD.h-H,v.y-H/2));}
+}
+
+function updateProjectiles(){
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];p.x+=p.vx;p.y+=p.vy;p.age++;
+    if(p.type==='fireball')addFire(p.x,p.y,3);else addPart(p.x,p.y,'#FF7043',2,1.5,3,15);
+    if(p.age>p.life||p.x<0||p.x>WORLD.w||p.y<0||p.y>WORLD.h){explode(p.x,p.y,p.r*6,p.damage,true);projectiles.splice(i,1);continue;}
+    let hit=false;
+    for(const e of enemies){if(!e.alive)continue;if(Math.hypot(p.x-e.x,p.y-e.y)<e.w/2+p.r){explode(p.x,p.y,p.r*7,p.damage,true);if(e.hp<=0)killEnemy(e);hit=true;break;}}
+    if(hit){projectiles.splice(i,1);continue;}
+    for(const t of tntCrates){if(!t.alive)continue;if(Math.hypot(p.x-t.x,p.y-t.y)<22+p.r){t.lit=true;t.litTimer=10;explode(p.x,p.y,40,40,true);projectiles.splice(i,1);hit=true;break;}}
+    if(hit)continue;
+    for(const b of BUILDINGS){if(!b.alive)continue;if(p.x>b.x-b.w/2-p.r&&p.x<b.x+b.w/2+p.r&&p.y>b.y-b.h/2-p.r&&p.y<b.y+b.h/2+p.r){explode(p.x,p.y,p.r*5,p.damage*0.5,true);projectiles.splice(i,1);break;}}
+  }
+}
+
+function updateWater(){
+  for(let i=waterDrops.length-1;i>=0;i--){
+    const w=waterDrops[i];w.x+=w.vx;w.y+=w.vy;w.age++;w.vy+=0.18;
+    if(w.age>w.life||w.x<0||w.x>WORLD.w||w.y<0||w.y>WORLD.h){waterDrops.splice(i,1);continue;}
+    // Put out fires
+    for(let j=fires.length-1;j>=0;j--){const f=fires[j];if(Math.hypot(w.x-f.x,w.y-f.y)<f.r+w.r){fires.splice(j,1);addPart(w.x,w.y,'#E3F2FD',14,4,4,25);firesOut++;score+=25;showMessage('💧 Fire out! +25');waterDrops.splice(i,1);break;}}
+    // Wet buildings on fire
+    for(const b of BUILDINGS){if(b.onFire&&Math.hypot(w.x-b.x,w.y-b.y)<b.w/2+10){b.onFire=false;b.hp=Math.min(b.maxHp,b.hp+10);addPart(w.x,w.y,'#64B5F6',12,3);firesOut++;score+=40;showMessage('💧 Building saved! +40');}}
+    // Slow enemies
+    for(const e of enemies){if(!e.alive)continue;if(Math.hypot(w.x-e.x,w.y-e.y)<e.w/2+w.r){e.wet=Math.min((e.wet||0)+30,120);addPart(w.x,w.y,'#90CAF9',6,2);}}
+  }
+}
+
+function updatePoliceBullets(){
+  for(let i=policeBullets.length-1;i>=0;i--){
+    const b=policeBullets[i];
+    if(b.target&&b.target.alive){const dx=b.target.x-b.x,dy=b.target.y-b.y,d=Math.hypot(dx,dy)||1;b.vx+=(dx/d*10-b.vx)*0.08;b.vy+=(dy/d*10-b.vy)*0.08;}
+    b.x+=b.vx;b.y+=b.vy;b.age++;
+    if(b.age>b.life||b.x<0||b.x>WORLD.w||b.y<0||b.y>WORLD.h){policeBullets.splice(i,1);continue;}
+    let hit=false;
+    for(const e of enemies){if(!e.alive)continue;if(Math.hypot(b.x-e.x,b.y-e.y)<e.w/2+b.r){e.hp-=b.damage;addPart(b.x,b.y,'#FFEB3B',10,4);if(e.hp<=0)killEnemy(e);policeBullets.splice(i,1);hit=true;break;}}
+  }
+}
+
+function updateEnemies(){
+  const target={x:WORLD.w/2,y:WORLD.h/2};
+  for(const e of enemies){
+    if(!e.alive)continue;
+    e.t+=0.04;
+    const wetMult=e.wet>0?0.45:1;
+    if(e.wet>0)e.wet--;
+    if(e.type==='bomber'){
+      e.x+=2.2;e.y+=Math.sin(e.t*0.3)*0.4;
+      if(e.x>WORLD.w+100){e.alive=false;score=Math.max(0,score-30);}
+      e.bombTimer--;
+      if(e.bombTimer<=0){e.bombTimer=90+Math.random()*80;eBullets.push({x:e.x,y:e.y,vx:(Math.random()-0.5)*2,vy:5,age:0,life:80,r:9,type:'bomb',damage:90,color:'#FF6F00'});}
+    } else {
+      const tdx=target.x-e.x,tdy=target.y-e.y,d=Math.hypot(tdx,tdy)||1;
+      e.vx=(tdx/d)*e.speed*wetMult+Math.sin(e.t*0.5)*0.5;
+      e.vy=(tdy/d)*e.speed*wetMult+Math.cos(e.t*0.5)*0.5;
+      e.x+=e.vx;e.y+=e.vy;e.angle=Math.atan2(e.vy,e.vx)+Math.PI/2;
+      e.fireTimer--;
+      // Attack all vehicles in range
+      for(const v of vehicles){
+        if(v.hp<=0)continue;
+        if(e.fireTimer<=0&&Math.hypot(v.x-e.x,v.y-e.y)<350){
+          e.fireTimer=80+Math.random()*100;
+          const dx2=v.x-e.x,dy2=v.y-e.y,d2=Math.hypot(dx2,dy2)||1;
+          eBullets.push({x:e.x,y:e.y,vx:(dx2/d2)*5,vy:(dy2/d2)*5,age:0,life:120,r:6,type:'shot',damage:18,color:'#FF1744'});
+          break;
+        }
+      }
+      for(const b of BUILDINGS){if(!b.alive)continue;if(Math.hypot(e.x-b.x,e.y-b.y)<b.w/2+e.w/2){b.hp-=(e.type==='tank'?0.25:0.08);if(!b.onFire&&Math.random()<0.004)b.onFire=true;if(b.hp<=0){b.alive=false;addFire(b.x,b.y,30);}}}
+    }
+  }
+  for(let i=enemies.length-1;i>=0;i--)if(!enemies[i].alive)enemies.splice(i,1);
+}
+
+function updateEBullets(){
+  for(let i=eBullets.length-1;i>=0;i--){
+    const b=eBullets[i];b.x+=b.vx;b.y+=b.vy;b.age++;
+    if(b.age>b.life||b.x<0||b.x>WORLD.w||b.y<0||b.y>WORLD.h){if(b.type==='bomb')explode(b.x,b.y,100,b.damage,false);eBullets.splice(i,1);continue;}
+    for(const v of vehicles){if(v.shield>0)continue;if(Math.hypot(b.x-v.x,b.y-v.y)<24+b.r){v.hp-=b.damage;v.shield=50;addPart(v.x,v.y,'#F44336',14,4);eBullets.splice(i,1);break;}}
+    if(b.type==='bomb'){for(const bl of BUILDINGS){if(!bl.alive)continue;if(b.x>bl.x-bl.w/2&&b.x<bl.x+bl.w/2&&b.y>bl.y-bl.h/2&&b.y<bl.y+bl.h/2){explode(b.x,b.y,90,b.damage,false);eBullets.splice(i,1);break;}}}
+  }
+}
+
+function updateCivilians(){
+  for(const c of civilians){
+    if(!c.alive||c.carrying)continue;
+    c.t+=0.05;
+    if(c.injured){c.vx*=0.96;c.vy*=0.96;}else{c.vx=Math.sin(c.t*0.5)*0.6;c.vy=Math.cos(c.t*0.4)*0.6;}
+    c.x+=c.vx;c.y+=c.vy;
+    c.x=Math.max(20,Math.min(WORLD.w-20,c.x));c.y=Math.max(20,Math.min(WORLD.h-20,c.y));
+  }
+}
+
+function updateTntCrates(){for(const t of tntCrates){if(!t.alive)continue;if(t.lit){t.litTimer--;if(Math.random()<0.5)addPart(t.x,t.y,'#FF6F00',2,2,3,15);if(t.litTimer<=0){t.alive=false;explode(t.x,t.y,130,110,true);showMessage('💥 TNT BOOM! Chain reaction!');}}}}
+function updateBuildings(){for(const b of BUILDINGS){if(!b.alive)continue;if(b.onFire){b.fireAge++;b.hp-=0.04;if(Math.random()<0.35)addFire(b.x+(Math.random()-0.5)*b.w,b.y+(Math.random()-0.5)*b.h,3);if(b.hp<=0){b.alive=false;addFire(b.x,b.y,40);}}}}
+function updateFires(){
+  for(let i=fires.length-1;i>=0;i--){const f=fires[i];f.t+=0.1;f.age++;if(f.age>f.life){fires.splice(i,1);continue;}if(Math.random()<0.4)addFire(f.x+(Math.random()-0.5)*20,f.y+(Math.random()-0.5)*20,2);if(Math.random()<0.003){for(const b of BUILDINGS){if(!b.onFire&&b.alive&&Math.hypot(b.x-f.x,b.y-f.y)<90){b.onFire=true;}}}}
+}
+function updateISS(){
+  ISS.angle+=0.003;
+  ISS.fireTimer--;
+  if(ISS.fireTimer<=0){
+    ISS.fireTimer=280+Math.random()*160;
+    let best=null,bd=Infinity;
+    for(const e of enemies){if(!e.alive)continue;const d=Math.hypot(e.x-ISS.x,e.y-ISS.y);if(d<bd){best=e;bd=d;}}
+    if(best){issRockets.push({x:ISS.x,y:ISS.y,vx:0,vy:2,age:0,life:300,target:best,r:8,damage:130});addPart(ISS.x,ISS.y,'#FF9800',18,5,4,35);showMessage('🛸 ISS launching rocket! 🚀');}
+  }
+}
+function updateMissiles(arr){
+  for(let i=arr.length-1;i>=0;i--){
+    const r=arr[i];
+    if(r.target&&r.target.alive){const dx=r.target.x-r.x,dy=r.target.y-r.y,d=Math.hypot(dx,dy)||1;r.vx+=(dx/d*12-r.vx)*0.11;r.vy+=(dy/d*12-r.vy)*0.11;}
+    r.x+=r.vx;r.y+=r.vy;r.age++;
+    addFire(r.x,r.y,4);addPart(r.x,r.y,'#FF6F00',1,1.5,2.5,18);
+    if(r.age>r.life||r.x<0||r.x>WORLD.w||r.y<0||r.y>WORLD.h){explode(r.x,r.y,80,r.damage,true);arr.splice(i,1);continue;}
+    let hit=false;
+    for(const e of enemies){if(!e.alive)continue;if(Math.hypot(r.x-e.x,r.y-e.y)<e.w/2+r.r){explode(r.x,r.y,85,r.damage,true);killEnemy(e);arr.splice(i,1);hit=true;break;}}
+  }
+}
+function updateDirtySpots(){if(Math.random()<0.006)spawnDirtySpot();}
+function updateTrash(){if(Math.random()<0.004)spawnTrash();}
+function updateParticles(){for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.age++;p.x+=p.vx;p.y+=p.vy;p.vx*=0.93;p.vy*=0.93;if(p.age>p.life)particles.splice(i,1);}}
+function updateWave(){waveTimer++;if(enemies.length===0&&waveTimer>240){wave++;waveTimer=0;startWave(wave);}}
+
+// ===== Action hint pulse =====
+function updateActionHint(){
+  const v=vehicles[activeV];const hint=document.getElementById('action-hint');
+  let msg='';
+  if(v.type==='ambulance'){
+    if(v.carrying)msg='🏥 Drive to HOSPITAL, then Space to drop off';
+    else{let any=civilians.some(c=>c.alive&&!c.carrying&&Math.hypot(v.x-c.x,v.y-c.y)<120);if(any)msg='🚑 Space — pick up civilian!';}
+  } else if(v.type==='firetruck'){
+    const near=fires.some(f=>Math.hypot(v.x-f.x,v.y-f.y)<200)||BUILDINGS.some(b=>b.onFire&&Math.hypot(v.x-b.x,v.y-b.y)<180);
+    if(near)msg='💧 Hold Space — spray water on fire!';}
+  else if(v.type==='police'){const ne=enemies.some(e=>e.alive&&Math.hypot(v.x-e.x,v.y-e.y)<500);if(ne)msg='🚓 Space — shoot the enemy!';}
+  else if(v.type==='cleaner'){const near=dirtySpots.some(s=>Math.hypot(v.x-s.x,v.y-s.y)<150);msg=near?'🚛 Drive over dirt to clean! Space = Power Wash!':'🚛 Find dirty roads to clean! (+15⭐ per spot)';}
+  else if(v.type==='rocket'){const ne=enemies.some(e=>e.alive);msg=ne?'🚀 Space — fire homing missile! Flies over buildings!':'🚀 Arrow keys to fly anywhere!';}
+  else if(v.type==='jet'){const ne=enemies.some(e=>e.alive);msg=ne?'✈️ Space — fire homing missile! Speed: '+Math.round(v.speed*10)/10:'✈️ Arrow keys to fly anywhere! Auto-patrols when idle!';}
+  else if(v.type==='helicopter'){
+    if(v.prisoner)msg='🚁 Carrying bad guy! Fly to 🚔 JAIL → Space to drop';
+    else if(v.carrying)msg='🚁 Carrying civilian! Fly to 🏥 HOSPITAL → Space to drop';
+    else{
+      const nearE=enemies.some(e=>e.alive&&Math.hypot(v.x-e.x,v.y-e.y)<110);
+      const nearC=civilians.some(c=>c.alive&&!c.carrying&&Math.hypot(v.x-c.x,v.y-c.y)<110);
+      if(nearE)msg='🚁 Space — GRAB the bad guy! Take to 🚔 JAIL!';
+      else if(nearC)msg='🚁 Space — RESCUE the civilian! Take to 🏥 HOSPITAL!';
+      else msg='🚁 Fly over enemies or people · Space to grab them!';
+    }
+  }
+  else if(v.type==='train'){msg='🚂 ↑ Speed up  ↓ Brake  Space=📯 Honk! Speed: '+Math.round(train.speed*10)/10;}
+  else if(v.type==='garbage'){const dump=SPECIAL_BLDGS.find(b=>b.id==='dump');const nearDump=Math.hypot(v.x-dump.x,v.y-dump.y)<140;if((v.cargo||0)>0&&nearDump)msg='🗑️ Space — DUMP the '+(v.cargo||0)+' bags! +'+((v.cargo||0)*30)+'⭐';else if((v.cargo||0)>0)msg='🚚 Carrying '+(v.cargo||0)+' bags — drive to 🗑️ DUMP!';else{const near=trashPiles.some(t=>t.alive&&Math.hypot(v.x-t.x,v.y-t.y)<160);msg=near?'🚚 Drive over trash bags to collect them!':'🚚 Find trash bags on the roads!';}}
+  else if(v.type==='pizzacar'||v.type==='pizzabike'){
+    const nearP=pizzaItems.some(p=>p.alive&&Math.hypot(v.x-p.x,v.y-p.y)<160);
+    msg=nearP?'🍕 Drive over pizza slices to collect them! +💰30 each':'🍕 Find pizza slices on the roads! Collected: '+pizzaCollected;
+  }
+  else msg='Space — fire! Q/W/E switch weapon';
+  if(msg){hint.textContent=msg;hint.style.opacity=1;}else hint.style.opacity=0;
+}
+
+// ===== Status UI =====
+let isOver=false;
+function updateStatusUi(){
+  const v=vehicles[activeV];
+  document.getElementById('score').textContent=score;
+  document.getElementById('money').textContent=money;
+  document.getElementById('hp-txt').textContent=Math.max(0,Math.round(v.hp));
+  document.getElementById('hp-bar').style.width=(Math.max(0,v.hp)/v.maxHp*100)+'%';
+  const aliveB=BUILDINGS.filter(b=>b.alive).length;
+  document.getElementById('city-bar').style.width=(aliveB/BUILDINGS.length*100)+'%';
+  document.getElementById('kills').textContent=kills;
+  document.getElementById('saved').textContent=savedCount;
+  document.getElementById('fout').textContent=firesOut;
+  document.getElementById('cleaned').textContent=cleanedCount;
+  document.getElementById('collected').textContent=collectedCount;
+  if(aliveB===0&&!isOver){isOver=true;triggerGameOver('All buildings destroyed!');}
+  if(vehicles.every(v2=>v2.hp<=0)&&!isOver){isOver=true;triggerGameOver('All vehicles destroyed!');}
+}
+function triggerGameOver(r){document.getElementById('go-sub').textContent=r;document.getElementById('go-score').textContent=score;document.getElementById('game-over').classList.add('show');}
+
+// ===== Drawing =====
+function drawGround(){
+  const[sx,sy]=w2s(0,0);ctx.fillStyle='#37474F';ctx.fillRect(sx,sy,WORLD.w,WORLD.h);
+  ctx.fillStyle='rgba(55,70,80,0.5)';const tile=72;const x0=Math.floor(cam.x/tile)*tile,y0=Math.floor(cam.y/tile)*tile;
+  for(let x=x0;x<cam.x+W+tile;x+=tile)for(let y=y0;y<cam.y+H+tile;y+=tile){const seed=((x*73856093)^(y*19349663))>>>0;if((seed%100)<38){const[sx2,sy2]=w2s(x+(seed%50),y+((seed>>8)%50));ctx.fillRect(sx2,sy2,4,4);}}
+}
+function drawRoads(){
+  const hw=ROAD_W/2;
+  ctx.fillStyle='#263238';
+  for(const ry of ROADS_H){const[sx,sy]=w2s(60,ry-hw);ctx.fillRect(sx,sy,WORLD.w-120,ROAD_W);}
+  for(const rx of ROADS_V){const[sx,sy]=w2s(rx-hw,60);ctx.fillRect(sx,sy,ROAD_W,WORLD.h-120);}
+  ctx.strokeStyle='#FFEB3B';ctx.lineWidth=4;ctx.setLineDash([22,14]);
+  for(const ry of ROADS_H){const[sx,sy]=w2s(60,ry);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx+WORLD.w-120,sy);ctx.stroke();}
+  for(const rx of ROADS_V){const[sx,sy]=w2s(rx,60);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx,sy+WORLD.h-120);ctx.stroke();}
+  ctx.setLineDash([]);ctx.strokeStyle='rgba(200,210,220,0.3)';ctx.lineWidth=2;
+  for(const ry of ROADS_H){const[sx,sy]=w2s(60,ry-hw);ctx.strokeRect(sx,sy,WORLD.w-120,ROAD_W);}
+  for(const rx of ROADS_V){const[sx,sy]=w2s(rx-hw,60);ctx.strokeRect(sx,sy,ROAD_W,WORLD.h-120);}
+}
+function drawSpecialBuildings(){
+  for(const b of SPECIAL_BLDGS){
+    const[sx,sy]=w2s(b.x-b.w/2,b.y-b.h/2);
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(sx+5,sy+7,b.w,b.h);
+    ctx.fillStyle=b.color;ctx.fillRect(sx,sy,b.w,b.h);
+    ctx.fillStyle=b.trim;ctx.fillRect(sx,sy,b.w,20);ctx.fillRect(sx,sy+b.h-12,b.w,12);
+    ctx.fillStyle='rgba(0,0,0,0.2)';ctx.fillRect(sx+b.w/2-22,sy+b.h-52,44,52);
+    ctx.fillStyle='#FFFFFF';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(b.label,sx+b.w/2,sy+11);
+    if(b.id==='hospital'){ctx.fillStyle='#E53935';ctx.fillRect(sx+b.w/2-5,sy+b.h/2-20,10,40);ctx.fillRect(sx+b.w/2-20,sy+b.h/2-5,40,10);}
+    if(b.id==='policestation'){ctx.strokeStyle='#212121';ctx.lineWidth=3;for(let bi=8;bi<b.w-8;bi+=12){ctx.beginPath();ctx.moveTo(sx+bi,sy+24);ctx.lineTo(sx+bi,sy+b.h-14);ctx.stroke();}}
+    // Glow ring for hospital (ambulance destination)
+    if(b.id==='hospital'){ctx.strokeStyle='rgba(76,175,80,0.45)';ctx.lineWidth=4;ctx.setLineDash([12,8]);ctx.beginPath();ctx.rect(sx-4,sy-4,b.w+8,b.h+8);ctx.stroke();ctx.setLineDash([]);}
+    if(b.id==='airport'){
+      // Tarmac apron
+      ctx.fillStyle='#263238';ctx.fillRect(sx+4,sy+b.h-40,b.w-8,36);
+      // Terminal windows row
+      ctx.fillStyle='rgba(150,230,255,0.75)';
+      for(let wi=0;wi<5;wi++)ctx.fillRect(sx+10+wi*((b.w-20)/5)+2,sy+28,Math.floor((b.w-20)/5)-4,18);
+      // Control tower (right side)
+      ctx.fillStyle='#455A64';ctx.fillRect(sx+b.w-38,sy-24,26,b.h+24);
+      ctx.fillStyle='rgba(150,230,255,0.8)';ctx.fillRect(sx+b.w-34,sy-18,18,18); // tower window
+      // Rotating radar dish
+      const radarA=Date.now()*0.002;
+      ctx.save();ctx.translate(sx+b.w-25,sy-28);ctx.rotate(radarA);
+      ctx.strokeStyle='#90A4AE';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-14);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-6,-10);ctx.stroke();
+      ctx.restore();
+      // Airport sign on roof
+      ctx.fillStyle='#37474F';ctx.fillRect(sx+10,sy-12,b.w-50,22);
+      ctx.fillStyle='#FFEE58';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('✈ AIRPORT',sx+b.w/2-18,sy);
+      // Runway approach lights (blinking)
+      const apLit=Math.floor(Date.now()/400)%3;
+      const apColors=['#F44336','#FFEE58','#4CAF50'];
+      ctx.fillStyle=apColors[apLit];ctx.beginPath();ctx.arc(sx+b.w/4,sy+b.h-8,5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=apColors[(apLit+1)%3];ctx.beginPath();ctx.arc(sx+b.w/2-18,sy+b.h-8,5,0,Math.PI*2);ctx.fill();
+    }
+    if(b.id==='pizzashop'){
+      // Checkered floor
+      ctx.fillStyle='rgba(255,255,255,0.15)';
+      for(let ci=0;ci<4;ci++)for(let ri=0;ri<3;ri++)if((ci+ri)%2===0)ctx.fillRect(sx+ci*(b.w/4),sy+20+ri*((b.h-32)/3),b.w/4,(b.h-32)/3);
+      // Giant pizza sign on roof
+      ctx.font='bold 28px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('🍕',sx+b.w/2,sy+b.h/2+4);
+      // Neon glow ring
+      ctx.strokeStyle='rgba(255,165,0,0.65)';ctx.lineWidth=4;ctx.setLineDash([10,6]);
+      ctx.beginPath();ctx.rect(sx-5,sy-5,b.w+10,b.h+10);ctx.stroke();ctx.setLineDash([]);
+    }
+    if(b.id==='jail'){
+      // Prison bars
+      ctx.strokeStyle='#212121';ctx.lineWidth=3.5;
+      for(let bi=10;bi<b.w-10;bi+=14){ctx.beginPath();ctx.moveTo(sx+bi,sy+24);ctx.lineTo(sx+bi,sy+b.h-12);ctx.stroke();}
+      // Horizontal bar across middle
+      ctx.beginPath();ctx.moveTo(sx+8,sy+b.h/2);ctx.lineTo(sx+b.w-8,sy+b.h/2);ctx.stroke();
+      // Glow ring
+      ctx.strokeStyle='rgba(255,82,82,0.4)';ctx.lineWidth=4;ctx.setLineDash([10,7]);
+      ctx.beginPath();ctx.rect(sx-4,sy-4,b.w+8,b.h+8);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+}
+function drawBuildings(){
+  for(const b of BUILDINGS){
+    const[sx,sy]=w2s(b.x-b.w/2,b.y-b.h/2);
+    if(sx+b.w<-10||sx>W+10||sy+b.h<-10||sy>H+10)continue;
+    if(!b.alive){ctx.fillStyle='rgba(50,55,55,0.5)';ctx.fillRect(sx+6,sy+8,b.w*0.7,b.h*0.5);ctx.fillStyle='#455A64';ctx.fillRect(sx+2,sy+b.h*0.4,b.w*0.5,b.h*0.4);continue;}
+    if(b.tall){
+      // Skyscraper: deep shadow, dark glass facade, illuminated windows, rooftop antenna
+      ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(sx+7,sy+9,b.w,b.h);
+      ctx.fillStyle='#1A2327';ctx.fillRect(sx,sy,b.w,b.h);
+      // Glass grid
+      const swc=Math.max(2,Math.floor(b.w/16)),swr=Math.max(3,Math.floor(b.h/14));
+      for(let r2=0;r2<swr;r2++)for(let c2=0;c2<swc;c2++){
+        const lit=((r2*7+c2*13)^(b.x|0))%6!==0;
+        ctx.fillStyle=b.onFire?'#FF9800':lit?'rgba(170,220,255,0.75)':'rgba(30,50,70,0.6)';
+        ctx.fillRect(sx+4+c2*(b.w-8)/swc+1,sy+4+r2*(b.h-10)/swr+1,Math.floor((b.w-8)/swc)-2,Math.floor((b.h-10)/swr)-2);
+      }
+      // Top band / parapet
+      ctx.fillStyle='#263238';ctx.fillRect(sx,sy,b.w,8);
+      // Antenna
+      ctx.fillStyle='#455A64';ctx.fillRect(sx+b.w/2-2,sy-12,4,14);
+      ctx.fillStyle='#F44336';ctx.beginPath();ctx.arc(sx+b.w/2,sy-14,3.5,0,Math.PI*2);ctx.fill();
+      // Beacon blink
+      if(Math.floor(Date.now()/600)%2===0){ctx.fillStyle='rgba(255,50,50,0.7)';ctx.beginPath();ctx.arc(sx+b.w/2,sy-14,7,0,Math.PI*2);ctx.fill();}
+      if(b.hp<b.maxHp){ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(sx,sy+b.h+2,b.w,5);ctx.fillStyle=b.hp>b.maxHp*0.5?'#4CAF50':b.hp>b.maxHp*0.25?'#FFC107':'#F44336';ctx.fillRect(sx,sy+b.h+2,b.w*(b.hp/b.maxHp),5);}
+      if(b.onFire){ctx.fillStyle='rgba(255,100,0,0.35)';ctx.fillRect(sx,sy,b.w,b.h);}
+      continue;
+    }
+    ctx.fillStyle='rgba(0,0,0,0.28)';ctx.fillRect(sx+4,sy+6,b.w,b.h);
+    ctx.fillStyle=b.color;ctx.fillRect(sx,sy,b.w,b.h);
+    ctx.fillStyle=b.roof;ctx.fillRect(sx,sy,b.w,16);ctx.fillRect(sx,sy+b.h-9,b.w,9);
+    ctx.fillStyle=b.onFire?'#FF9800':'rgba(200,230,255,0.7)';
+    const wc=Math.max(1,Math.floor(b.w/22)),wr=Math.max(1,Math.floor(b.h/20));
+    for(let r=0;r<wr;r++)for(let c=0;c<wc;c++)ctx.fillRect(sx+4+c*(b.w-8)/wc+2,sy+18+r*(b.h-26)/wr+2,11,9);
+    if(b.hp<b.maxHp){ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(sx,sy+b.h+2,b.w,5);ctx.fillStyle=b.hp>50?'#4CAF50':b.hp>25?'#FFC107':'#F44336';ctx.fillRect(sx,sy+b.h+2,b.w*(b.hp/b.maxHp),5);}
+    if(b.onFire){ctx.fillStyle='rgba(255,100,0,0.25)';ctx.fillRect(sx,sy,b.w,b.h);}
+  }
+}
+function drawISS(){
+  const[sx,sy]=w2s(ISS.x,ISS.y);
+  if(sx<-200||sx>W+200||sy<-120||sy>H+120)return;
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(ISS.angle);
+  // Solar panel arms
+  for(const side of[-1,1]){
+    ctx.fillStyle='#FFC107';ctx.fillRect(side*28,-6,side*52,12);
+    ctx.strokeStyle='#F57F17';ctx.lineWidth=1.5;
+    for(let p=0;p<4;p++){ctx.beginPath();ctx.moveTo(side*(30+p*12),-6);ctx.lineTo(side*(30+p*12),6);ctx.stroke();}
+  }
+  // Central module
+  ctx.fillStyle='#78909C';ctx.fillRect(-22,-10,44,20);
+  ctx.fillStyle='#B0BEC5';ctx.fillRect(-18,-7,36,14);
+  // Windows
+  ctx.fillStyle='rgba(150,220,255,0.8)';
+  for(let w=0;w<3;w++)ctx.fillRect(-12+w*10,-4,7,8);
+  // Docking port / rocket launcher
+  ctx.fillStyle='#455A64';ctx.fillRect(-4,10,8,14);
+  ctx.fillStyle='#37474F';ctx.beginPath();ctx.arc(0,24,5,0,Math.PI*2);ctx.fill();
+  // Glow
+  const g=ctx.createRadialGradient(0,0,0,0,0,80);
+  g.addColorStop(0,'rgba(100,200,255,0.08)');g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,80,0,Math.PI*2);ctx.fill();
+  // Label
+  ctx.rotate(-ISS.angle);
+  ctx.fillStyle='rgba(200,240,255,0.9)';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText('🛸 ISS',0,28);
+  ctx.restore();
+}
+function drawMissiles(arr){
+  for(const r of arr){
+    const[sx,sy]=w2s(r.x,r.y);
+    if(sx<-30||sx>W+30||sy<-30||sy>H+30)continue;
+    const ang=Math.atan2(r.vy,r.vx)+Math.PI/2;
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(ang);
+    ctx.fillStyle='#ECEFF1';ctx.fillRect(-3,-12,6,22);
+    ctx.fillStyle='#F44336';ctx.beginPath();ctx.moveTo(0,-16);ctx.lineTo(-5,-8);ctx.lineTo(5,-8);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#FF9800';ctx.beginPath();ctx.moveTo(-3,10);ctx.lineTo(0,18);ctx.lineTo(3,10);ctx.closePath();ctx.fill();
+    const g2=ctx.createRadialGradient(0,0,0,0,0,22);g2.addColorStop(0,'rgba(255,150,0,0.5)');g2.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g2;ctx.beginPath();ctx.arc(0,0,22,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+}
+function drawTrack(){
+  // Crossties
+  ctx.strokeStyle='#5D4037';ctx.lineWidth=14;ctx.lineCap='round';
+  const tieDist=28;
+  for(let d=0;d<TRACK_LEN;d+=tieDist){
+    const p=getTrackPos(d);const[sx,sy]=w2s(p.x,p.y);
+    if(sx<-20||sx>W+20||sy<-20||sy>H+20)continue;
+    const px=Math.cos(p.angle+Math.PI/2)*7,py=Math.sin(p.angle+Math.PI/2)*7;
+    ctx.beginPath();ctx.moveTo(sx-px,sy-py);ctx.lineTo(sx+px,sy+py);ctx.stroke();
+  }
+  // Two rails
+  for(const off of[-7,7]){
+    ctx.strokeStyle='#9E9E9E';ctx.lineWidth=4;ctx.lineCap='square';
+    ctx.beginPath();
+    let first=true;
+    for(let d=0;d<TRACK_LEN+2;d+=6){
+      const p=getTrackPos(d);const[sx,sy]=w2s(p.x+Math.cos(p.angle+Math.PI/2)*off,p.y+Math.sin(p.angle+Math.PI/2)*off);
+      if(first){ctx.moveTo(sx,sy);first=false;}else ctx.lineTo(sx,sy);
+    }
+    ctx.stroke();
+  }
+}
+function drawTrainStops(){
+  for(const s of TRAIN_STOPS){
+    const[sx,sy]=w2s(s.x,s.y);
+    if(sx<-80||sx>W+80||sy<-80||sy>H+80)continue;
+    // Platform
+    ctx.fillStyle='rgba(0,0,0,0.35)';ctx.fillRect(sx-43,sy-18,86,42);
+    ctx.fillStyle='#ECEFF1';ctx.fillRect(sx-40,sy-16,80,38);
+    ctx.fillStyle='#78909C';ctx.fillRect(sx-40,sy-16,80,8);
+    ctx.fillStyle='#263238';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.label,sx,sy+8);
+    // Glow when train is stopped here
+    if(train.stopTimer>0&&train.lastStop===TRAIN_STOPS.indexOf(s)){
+      ctx.strokeStyle='rgba(255,235,59,0.7)';ctx.lineWidth=3;ctx.setLineDash([8,6]);
+      ctx.strokeRect(sx-44,sy-20,88,44);ctx.setLineDash([]);
+    }
+  }
+}
+function drawTrain(){
+  const stopped=train.stopTimer>0;
+  for(let car=TRAIN_CARS-1;car>=0;car--){
+    const d=train.dist-car*CAR_GAP;
+    const p=getTrackPos(d);
+    const[sx,sy]=w2s(p.x,p.y);
+    if(sx<-100||sx>W+100||sy<-100||sy>H+100)continue;
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(p.angle+Math.PI/2);
+    const isLoco=car===0;
+    const cw=isLoco?36:32,ch=isLoco?64:58;
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(-cw/2+4,4,cw,ch);
+    // Body — sleek white/silver with blue stripe
+    ctx.fillStyle=isLoco?'#E3F2FD':'#ECEFF1';ctx.fillRect(-cw/2,-ch/2,cw,ch);
+    ctx.fillStyle='#1565C0';ctx.fillRect(-cw/2,-ch/2+8,cw,10); // blue stripe
+    ctx.fillStyle='#1976D2';ctx.fillRect(-cw/2,ch/2-18,cw,10); // bottom stripe
+    // Rounded nose on loco
+    if(isLoco){
+      ctx.fillStyle='#1565C0';ctx.fillRect(-cw/2,-ch/2,cw,12);
+      // LED headlights
+      ctx.fillStyle=stopped?'#FFEE58':'#E1F5FE';
+      ctx.fillRect(-cw/2+3,-ch/2-3,10,6);ctx.fillRect(cw/2-13,-ch/2-3,10,6);
+      // Pantograph (zigzag on top)
+      ctx.strokeStyle='#546E7A';ctx.lineWidth=2;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(-10,-ch/2-2);ctx.lineTo(-4,-ch/2-14);ctx.lineTo(4,-ch/2-14);ctx.lineTo(10,-ch/2-2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(-4,-ch/2-14);ctx.lineTo(0,-ch/2-20);ctx.lineTo(4,-ch/2-14);ctx.stroke();
+      // Contact wire spark
+      ctx.fillStyle='rgba(120,210,255,0.8)';ctx.beginPath();ctx.arc(0,-ch/2-20,3,0,Math.PI*2);ctx.fill();
+    } else {
+      // Passenger windows
+      ctx.fillStyle='rgba(180,230,255,0.7)';
+      for(let wi=0;wi<3;wi++)ctx.fillRect(-cw/2+5+wi*9,-ch/4,7,ch/2.6);
+      // Pantograph on cars too
+      ctx.strokeStyle='#90A4AE';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(-6,-ch/2);ctx.lineTo(-2,-ch/2-10);ctx.lineTo(2,-ch/2-10);ctx.lineTo(6,-ch/2);ctx.stroke();
+    }
+    // Undercarriage / bogies
+    ctx.fillStyle='#37474F';ctx.fillRect(-cw/2,-ch/2+3,cw,5);ctx.fillRect(-cw/2,ch/2-8,cw,5);
+    // Wheels
+    ctx.fillStyle='#212121';
+    for(const wy of[-ch/2+5,ch/2-6])for(const wx of[-cw/2-2,cw/2-2]){ctx.beginPath();ctx.arc(wx,wy,4,0,Math.PI*2);ctx.fill();}
+    // Coupler
+    ctx.fillStyle='#546E7A';ctx.fillRect(-3,ch/2-2,6,8);
+    ctx.restore();
+  }
+}
+function drawTrashPiles(){
+  for(const t of trashPiles){
+    if(!t.alive)continue;
+    const[sx,sy]=w2s(t.x,t.y);
+    if(sx<-40||sx>W+40||sy<-40||sy>H+40)continue;
+    // Bag shapes deterministic from seed
+    const bags=[{dx:-4,dy:2,r:t.r*0.65},{dx:4,dy:0,r:t.r*0.7},{dx:0,dy:-3,r:t.r*0.55}];
+    for(const b of bags){
+      ctx.fillStyle='rgba(50,80,30,0.82)';
+      ctx.beginPath();ctx.ellipse(sx+b.dx,sy+b.dy,b.r,b.r*0.78,0,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='rgba(30,55,15,0.7)';ctx.lineWidth=1.2;ctx.stroke();
+      ctx.fillStyle='rgba(80,120,40,0.5)';ctx.beginPath();ctx.arc(sx+b.dx-b.r*0.25,sy+b.dy-b.r*0.2,b.r*0.22,0,Math.PI*2);ctx.fill();
+    }
+    // tie at top of middle bag
+    ctx.strokeStyle='#FFD54F';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(sx-3,sy-t.r*0.7);ctx.lineTo(sx+3,sy-t.r*0.7);ctx.stroke();
+  }
+}
+function drawRunway(){
+  const[sx1,sy1]=w2s(RUNWAY.x1,RUNWAY.y1);
+  const[sx2,sy2]=w2s(RUNWAY.x2,RUNWAY.y2);
+  const rw=sx2-sx1,rh=sy2-sy1;
+  if(sx2<-10||sx1>W+10||sy2<-10||sy1>H+10)return;
+  // Asphalt base
+  ctx.fillStyle='#1A2226';ctx.fillRect(sx1,sy1,rw,rh);
+  // Edge stripes
+  ctx.fillStyle='#FFFFFF';ctx.fillRect(sx1,sy1,rw,3);ctx.fillRect(sx1,sy2-3,rw,3);
+  // Centre yellow dash line
+  ctx.strokeStyle='#FFEE58';ctx.lineWidth=2.5;ctx.setLineDash([28,18]);
+  ctx.beginPath();ctx.moveTo(sx1,sy1+rh/2);ctx.lineTo(sx2,sy1+rh/2);ctx.stroke();
+  ctx.setLineDash([]);
+  // Threshold bars at each end
+  const bh2=(rh-10)/6;
+  ctx.fillStyle='#FFFFFF';
+  for(let i=0;i<6;i++){
+    ctx.fillRect(sx1+6,sy1+5+i*(bh2+1),40,bh2-1);
+    ctx.fillRect(sx2-46,sy1+5+i*(bh2+1),40,bh2-1);
+  }
+  // Runway numbers (09 and 27)
+  ctx.fillStyle='#FFFFFF';ctx.font='bold 12px monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('09',sx1+70,sy1+rh/2);
+  ctx.fillText('27',sx2-70,sy1+rh/2);
+  // Taxiway connector (short yellow line to airport)
+  ctx.strokeStyle='#FFEE58';ctx.lineWidth=4;ctx.setLineDash([16,10]);
+  const[apx,apy]=w2s(2550,430);
+  ctx.beginPath();ctx.moveTo(sx2-180,sy1+rh);ctx.lineTo(apx,apy);ctx.stroke();
+  ctx.setLineDash([]);
+  // AIRPORT sign at left end
+  const[signX,signY]=w2s(RUNWAY.x1-60,RUNWAY.y1+rh/2);
+  ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fillRect(signX-44,signY-14,88,28);
+  ctx.strokeStyle='#FFEE58';ctx.lineWidth=2;ctx.strokeRect(signX-44,signY-14,88,28);
+  ctx.fillStyle='#FFEE58';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('✈ AIRPORT',signX,signY);
+}
+function drawBusStops(){
+  for(const s of BUS_STOPS){
+    const[sx,sy]=w2s(s.x,s.y);
+    if(sx<-40||sx>W+40||sy<-40||sy>H+40)continue;
+    // Shelter frame
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(sx-13,sy-20,26,32);
+    ctx.fillStyle='#1565C0';ctx.fillRect(sx-12,sy-18,24,8); // roof
+    ctx.fillStyle='rgba(150,220,255,0.5)';ctx.fillRect(sx-12,sy-10,24,20); // glass sides
+    // Pole
+    ctx.fillStyle='#78909C';ctx.fillRect(sx+8,sy-18,3,30);
+    // Bus sign
+    ctx.fillStyle='#FFEE58';ctx.fillRect(sx+7,sy-26,10,10);
+    ctx.fillStyle='#1A237E';ctx.font='bold 7px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('🚌',sx+12,sy-21);
+  }
+}
+function drawPizzaItems(){
+  for(const p of pizzaItems){
+    if(!p.alive)continue;
+    const[sx,sy]=w2s(p.x,p.y);
+    if(sx<-40||sx>W+40||sy<-40||sy>H+40)continue;
+    // Crust ring
+    ctx.fillStyle='#FF8F00';ctx.beginPath();ctx.arc(sx,sy,p.r,0,Math.PI*2);ctx.fill();
+    // Tomato sauce
+    ctx.fillStyle='#E53935';ctx.beginPath();ctx.arc(sx,sy,p.r-2.5,0,Math.PI*2);ctx.fill();
+    // Cheese
+    ctx.fillStyle='#FFEE58';ctx.beginPath();ctx.arc(sx,sy,p.r-4.5,0,Math.PI*2);ctx.fill();
+    // Toppings
+    const tops=['#C62828','#2E7D32','#4527A0'];
+    for(let i=0;i<5;i++){const a=p.seed*0.1+i*1.256;const d=p.r*0.48;ctx.fillStyle=tops[i%3];ctx.beginPath();ctx.arc(sx+Math.cos(a)*d,sy+Math.sin(a)*d,2.5,0,Math.PI*2);ctx.fill();}
+    // Slice lines
+    ctx.strokeStyle='rgba(200,100,0,0.5)';ctx.lineWidth=1;
+    for(let i=0;i<3;i++){const a=p.seed*0.05+i*Math.PI/3;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx+Math.cos(a)*p.r,sy+Math.sin(a)*p.r);ctx.stroke();}
+    // Glow bob
+    const bob=Math.sin(Date.now()*0.004+p.seed)*2;
+    ctx.strokeStyle='rgba(255,200,0,0.55)';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(sx,sy+bob,p.r+4,0,Math.PI*2);ctx.stroke();
+  }
+}
+function drawDirtySpots(){
+  for(const s of dirtySpots){
+    const[sx,sy]=w2s(s.x,s.y);
+    if(sx<-60||sx>W+60||sy<-60||sy>H+60)continue;
+    ctx.fillStyle='rgba(70,40,10,0.52)';
+    ctx.beginPath();ctx.ellipse(sx,sy,s.r,s.r*0.62,0,0,Math.PI*2);ctx.fill();
+    // small mud blobs deterministically placed
+    const bl=[{a:1.1,d:0.55},{a:2.7,d:0.45},{a:4.3,d:0.6},{a:0.3,d:0.35}];
+    ctx.fillStyle='rgba(60,30,5,0.45)';
+    for(const b of bl){const mx=sx+Math.cos(b.a+s.seed)*s.r*b.d;const my=sy+Math.sin(b.a+s.seed*0.7)*s.r*b.d*0.6;ctx.beginPath();ctx.arc(mx,my,s.r*0.28,0,Math.PI*2);ctx.fill();}
+  }
+}
+function drawCraters(){for(const c of craters){const[sx,sy]=w2s(c.x,c.y);const g=ctx.createRadialGradient(sx,sy,0,sx,sy,c.r*3);g.addColorStop(0,'rgba(15,10,0,0.9)');g.addColorStop(0.6,'rgba(50,35,15,0.4)');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,c.r*3,0,Math.PI*2);ctx.fill();}}
+function drawFires(){for(const f of fires){const[sx,sy]=w2s(f.x,f.y);const alpha=Math.min(1,(1-f.age/f.life)*0.9);const g=ctx.createRadialGradient(sx,sy,0,sx,sy,f.r+12);g.addColorStop(0,'rgba(255,180,0,0.7)');g.addColorStop(0.5,'rgba(255,80,0,0.4)');g.addColorStop(1,'rgba(255,50,0,0)');ctx.fillStyle=g;ctx.globalAlpha=alpha;ctx.beginPath();ctx.arc(sx,sy,f.r+12,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}}
+function drawTntCrates(){
+  for(const t of tntCrates){if(!t.alive)continue;const[sx,sy]=w2s(t.x-14,t.y-14);const flash=t.lit&&Math.floor(t.litTimer/8)%2===0;
+    ctx.fillStyle=flash?'#FF5722':'#795548';ctx.fillRect(sx,sy,28,28);
+    ctx.strokeStyle=flash?'#FFEB3B':'#4E342E';ctx.lineWidth=1.5;ctx.strokeRect(sx,sy,28,28);
+    ctx.beginPath();ctx.moveTo(sx+14,sy);ctx.lineTo(sx+14,sy+28);ctx.stroke();ctx.beginPath();ctx.moveTo(sx,sy+14);ctx.lineTo(sx+28,sy+14);ctx.stroke();
+    ctx.fillStyle=flash?'#FFEB3B':'#FF3D00';ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('TNT',sx+14,sy+14);
+    if(t.lit){ctx.fillStyle='#FFEB3B';ctx.font='bold 11px sans-serif';ctx.fillText(Math.ceil(t.litTimer/60)+1,sx+14,sy-10);}
+  }
+}
+function drawCivilians(){
+  for(const c of civilians){
+    if(!c.alive)continue;
+    const[sx,sy]=w2s(c.x,c.y);
+    ctx.fillStyle=c.injured?'#FF8A65':'#FFD54F';
+    ctx.beginPath();ctx.arc(sx,sy-10,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=c.injured?'#E64A19':'#F57F17';ctx.fillRect(sx-5,sy-4,10,15);
+    if(c.injured){ctx.fillStyle='#FF1744';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('💔',sx,sy-22);}
+    else{ctx.fillStyle='#FFEB3B';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('😨',sx,sy-22);}
+    // pulsing ring if injured and ambulance is nearest
+    if(c.injured&&!c.carrying){ctx.strokeStyle='rgba(255,82,82,0.5)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx,sy-4,14+Math.sin(Date.now()*0.01)*3,0,Math.PI*2);ctx.stroke();}
+  }
+}
+function drawEnemies(){
+  for(const e of enemies){
+    if(!e.alive)continue;
+    const[sx,sy]=w2s(e.x,e.y);
+    if(sx<-80||sx>W+80||sy<-80||sy>H+80)continue;
+    ctx.save();ctx.translate(sx,sy);
+    if(e.type==='tank'){
+      ctx.rotate(e.angle);
+      if(e.wet>0){ctx.fillStyle='rgba(100,180,255,0.4)';ctx.beginPath();ctx.arc(0,0,e.w/2+8,0,Math.PI*2);ctx.fill();}
+      ctx.fillStyle='rgba(0,0,0,0.28)';ctx.fillRect(-e.w/2+4,-e.h/2+5,e.w,e.h);
+      ctx.fillStyle='#546E7A';ctx.fillRect(-e.w/2,-e.h/2,e.w,e.h);
+      ctx.fillStyle='#37474F';ctx.fillRect(-e.w/2,-e.h/2,e.w,10);ctx.fillRect(-e.w/2,e.h/2-10,e.w,10);
+      ctx.fillStyle='#455A64';ctx.beginPath();ctx.arc(0,0,14,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#263238';ctx.fillRect(-4,-34,8,28);
+      ctx.fillStyle='#FF1744';ctx.beginPath();ctx.arc(-7,-2,4,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(7,-2,4,0,Math.PI*2);ctx.fill();
+    } else if(e.type==='runner'){
+      ctx.rotate(e.angle);
+      ctx.fillStyle=e.wet>0?'#64B5F6':'#D32F2F';
+      ctx.beginPath();ctx.arc(0,-10,8,0,Math.PI*2);ctx.fill();
+      ctx.fillRect(-7,-8,14,18);
+      const sw=Math.sin(e.t*3)*0.8;
+      ctx.save();ctx.rotate(sw);ctx.fillRect(8,-6,6,12);ctx.restore();
+      ctx.save();ctx.rotate(-sw);ctx.fillRect(-14,-6,6,12);ctx.restore();
+    } else {
+      ctx.fillStyle='rgba(0,0,0,0.22)';ctx.fillRect(-e.w/2+4,3,e.w,16);
+      ctx.fillStyle='#546E7A';ctx.fillRect(-e.w/2,-8,e.w,16);
+      ctx.fillStyle='#607D8B';ctx.fillRect(-e.w/2+5,-22,e.w-10,14);ctx.fillRect(-e.w/2+5,8,e.w-10,14);
+      ctx.fillStyle='#FF9800';ctx.beginPath();ctx.arc(e.w/2-12,-18,6,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(e.w/2-12,18,6,0,Math.PI*2);ctx.fill();
+    }
+    const bw=e.w;ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(-bw/2,-e.h/2-14,bw,6);ctx.fillStyle='#F44336';ctx.fillRect(-bw/2,-e.h/2-14,bw*(e.hp/e.maxHp),6);
+    ctx.restore();
+  }
+}
+function drawEBullets(){for(const b of eBullets){const[sx,sy]=w2s(b.x,b.y);if(b.type==='bomb'){ctx.fillStyle='#212121';ctx.beginPath();ctx.arc(sx,sy,b.r,0,Math.PI*2);ctx.fill();addFire(sx,sy,2);}else{const g=ctx.createRadialGradient(sx,sy,0,sx,sy,b.r*4);g.addColorStop(0,b.color);g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,b.r*4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#FFCCBC';ctx.beginPath();ctx.arc(sx,sy,b.r,0,Math.PI*2);ctx.fill();}}}
+function drawProjectiles(){
+  for(const p of projectiles){const[sx,sy]=w2s(p.x,p.y);
+    if(p.type==='fireball'){const g=ctx.createRadialGradient(sx,sy,0,sx,sy,p.r*5);g.addColorStop(0,'#FFFFFF');g.addColorStop(0.3,'#FFEB3B');g.addColorStop(0.7,'#FF6F00');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,p.r*5,0,Math.PI*2);ctx.fill();}
+    else if(p.type==='cannon'){ctx.fillStyle='#546E7A';ctx.beginPath();ctx.arc(sx,sy,p.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#B0BEC5';ctx.beginPath();ctx.arc(sx-3,sy-3,p.r*0.45,0,Math.PI*2);ctx.fill();}
+    else{const g=ctx.createRadialGradient(sx,sy,0,sx,sy,p.r*3);g.addColorStop(0,'#FFEB3B');g.addColorStop(0.5,'#FF6F00');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,p.r*3,0,Math.PI*2);ctx.fill();ctx.fillStyle='#795548';ctx.fillRect(sx-7,sy-7,14,14);ctx.fillStyle='#FF3D00';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('T',sx,sy);}
+  }
+}
+function drawWater(){
+  ctx.fillStyle='#64B5F6';
+  for(const w of waterDrops){const[sx,sy]=w2s(w.x,w.y);const a=1-w.age/w.life;ctx.globalAlpha=a*0.85;ctx.beginPath();ctx.ellipse(sx,sy,w.r,w.r*0.6,Math.atan2(w.vy,w.vx),0,Math.PI*2);ctx.fill();}
+  ctx.globalAlpha=1;
+}
+function drawPoliceBullets(){
+  for(const b of policeBullets){const[sx,sy]=w2s(b.x,b.y);const g=ctx.createRadialGradient(sx,sy,0,sx,sy,16);g.addColorStop(0,'#FFEB3B');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,16,0,Math.PI*2);ctx.fill();ctx.fillStyle='#FFF9C4';ctx.beginPath();ctx.arc(sx,sy,b.r,0,Math.PI*2);ctx.fill();}
+}
+function drawVehicle(v,isActive){
+  const[sx,sy]=w2s(v.x,v.y);
+  if(sx<-80||sx>W+80||sy<-80||sy>H+80)return;
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(v.angle);
+  const flash=v.shield>0&&Math.floor(v.shield/6)%2===0;
+  // Active glow
+  if(isActive){const g=ctx.createRadialGradient(0,0,0,0,0,42);g.addColorStop(0,'rgba(255,235,59,0.22)');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,42,0,Math.PI*2);ctx.fill();}
+  if(v.type==='cannon'){
+    // Tank treads
+    ctx.fillStyle='#212121';ctx.fillRect(-v.w/2-6,-v.h/2+4,8,v.h-8);ctx.fillRect(v.w/2-2,-v.h/2+4,8,v.h-8);
+    ctx.strokeStyle='#424242';ctx.lineWidth=2;for(let i=0;i<8;i++){const ty2=-v.h/2+4+i*(v.h-8)/8;ctx.beginPath();ctx.moveTo(-v.w/2-6,ty2);ctx.lineTo(-v.w/2+2,ty2);ctx.stroke();ctx.beginPath();ctx.moveTo(v.w/2-2,ty2);ctx.lineTo(v.w/2+6,ty2);ctx.stroke();}
+    ctx.fillStyle=flash?'#FF8A65':v.color;ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    ctx.fillStyle=v.trim;ctx.fillRect(-v.w/2,-v.h/2,v.w,10);ctx.fillRect(-v.w/2,v.h/2-10,v.w,10);
+    ctx.fillStyle='#D84315';ctx.beginPath();ctx.arc(0,0,16,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#4E342E';ctx.fillRect(-5,-38,10,30);ctx.fillStyle='#6D4C41';ctx.fillRect(-4,-40,8,8);
+    if(fireCooldown>WEAPONS[cannonWep].cooldown-4){ctx.fillStyle='#FFEB3B';ctx.beginPath();ctx.arc(0,-44,10,0,Math.PI*2);ctx.fill();}
+    if(v.speed>0.5){const fg=ctx.createLinearGradient(0,v.h/2,0,v.h/2+22);fg.addColorStop(0,'#FFEB3B');fg.addColorStop(0.5,'#FF6F00');fg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=fg;ctx.beginPath();ctx.moveTo(-8,v.h/2);ctx.lineTo(0,v.h/2+22);ctx.lineTo(8,v.h/2);ctx.closePath();ctx.fill();}
+  } else if(v.type==='firetruck'){
+    ctx.fillStyle=flash?'#FF8A80':v.color;
+    ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    // Water tank on top
+    ctx.fillStyle='#B0BEC5';ctx.fillRect(-v.w/2+8,-v.h/2+10,v.w-16,v.h-30);
+    ctx.fillStyle='#4FC3F7';ctx.fillRect(-v.w/2+12,-v.h/2+14,v.w-24,v.h-40);
+    // Hose nozzle at front
+    ctx.fillStyle='#78909C';ctx.fillRect(-5,-v.h/2-6,10,10);
+    // Flashing lights
+    const redOn=Math.sin(v.sirenPhase)>0;
+    ctx.fillStyle=redOn?'#F44336':'rgba(200,0,0,0.3)';ctx.fillRect(-v.w/2,-v.h/2-8,v.w/2,8);
+    ctx.fillStyle=!redOn?'#F44336':'rgba(200,0,0,0.3)';ctx.fillRect(0,-v.h/2-8,v.w/2,8);
+    // Ladder on side
+    ctx.strokeStyle='#FFEB3B';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-v.w/2+4,v.h/2-30);ctx.lineTo(v.w/2-4,v.h/2-30);ctx.stroke();for(let i=0;i<5;i++){ctx.beginPath();ctx.moveTo(-v.w/2+8+i*((v.w-16)/4),v.h/2-34);ctx.lineTo(-v.w/2+8+i*((v.w-16)/4),v.h/2-22);ctx.stroke();}
+    // Water spray visual when shooting
+    if(waterCooldown>0){for(let i=-1;i<=1;i++){const nx3=Math.sin(v.angle+i*0.22),ny3=-Math.cos(v.angle+i*0.22);ctx.fillStyle='rgba(100,200,255,0.5)';ctx.beginPath();ctx.arc(v.h/2+i*8,-v.h/2,6,0,Math.PI*2);ctx.fill();}}
+  } else if(v.type==='ambulance'){
+    ctx.fillStyle=flash?'#FFCDD2':v.color;ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    ctx.fillStyle=v.trim;ctx.fillRect(-v.w/2,-v.h/2,v.w,7);ctx.fillRect(-v.w/2,v.h/2-7,v.w,7);
+    ctx.fillStyle='rgba(100,200,255,0.7)';ctx.fillRect(-v.w/2+4,-v.h/2+10,v.w-8,v.h-26);
+    // Red cross
+    ctx.fillStyle='#E53935';ctx.fillRect(-5,-10,10,22);ctx.fillRect(-11,-4,22,10);
+    // Flashing lights top
+    const aRed=Math.sin(v.sirenPhase)>0;
+    ctx.fillStyle=aRed?'#F44336':'rgba(244,67,54,0.3)';ctx.fillRect(-v.w/2,-v.h/2-7,v.w/2,7);
+    ctx.fillStyle=!aRed?'#F44336':'rgba(244,67,54,0.3)';ctx.fillRect(0,-v.h/2-7,v.w/2,7);
+    // Show carrying icon
+    if(v.carrying){ctx.font='20px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('👤',0,2);}
+  } else if(v.type==='police'){
+    ctx.fillStyle=flash?'#7986CB':v.color;ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    ctx.fillStyle=v.trim;ctx.fillRect(-v.w/2,-v.h/2,v.w,8);ctx.fillRect(-v.w/2,v.h/2-8,v.w,8);
+    // Checker side stripe
+    ctx.fillStyle='#FFFFFF';for(let i=0;i<5;i++)ctx.fillRect(-v.w/2+5+i*7,-3,5,6);
+    ctx.fillStyle='#1A237E';for(let i=0;i<4;i++)ctx.fillRect(-v.w/2+8+i*7,-3,3,6);
+    // Flashing lightbar
+    const pRed=Math.sin(v.sirenPhase)>0;
+    ctx.fillStyle=pRed?'#F44336':'rgba(180,0,0,0.3)';ctx.fillRect(-v.w/2,-v.h/2-8,v.w/2,8);
+    ctx.fillStyle=!pRed?'#1E88E5':'rgba(0,80,180,0.3)';ctx.fillRect(0,-v.h/2-8,v.w/2,8);
+    // Gun barrel
+    ctx.fillStyle='#37474F';ctx.fillRect(-4,-v.h/2-4,8,6);
+    // Muzzle flash
+    if(policeCooldown>8){ctx.fillStyle='#FFEB3B';ctx.beginPath();ctx.arc(0,-v.h/2-8,8,0,Math.PI*2);ctx.fill();}
+    // "POLICE" label
+    ctx.fillStyle='#FFFFFF';ctx.font='bold 7px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('POLICE',0,v.h/4);
+  } else if(v.type==='garbage'){
+    ctx.fillStyle=flash?'#81C784':v.color;ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    ctx.fillStyle=v.trim;ctx.fillRect(-v.w/2,-v.h/2,v.w,14);ctx.fillRect(-v.w/2,v.h/2-14,v.w,14);
+    // Compactor hopper (back)
+    ctx.fillStyle='#263238';ctx.fillRect(-v.w/2+4,v.h/2-28,v.w-8,20);
+    ctx.fillStyle='#37474F';ctx.fillRect(-v.w/2+8,v.h/2-26,v.w-16,14);
+    // Cab (front)
+    ctx.fillStyle='rgba(100,200,255,0.55)';ctx.fillRect(-v.w/2+4,-v.h/2+16,v.w-8,v.h*0.3);
+    // Cargo count badge
+    if((v.cargo||0)>0){
+      ctx.fillStyle='#FFEB3B';ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#212121';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(v.cargo||0,0,0);
+    }
+    // Yellow flashing light
+    const gOn=Math.sin(v.sirenPhase*1.4)>0;
+    ctx.fillStyle=gOn?'#FFEE58':'rgba(180,160,0,0.2)';ctx.fillRect(-v.w/2,-v.h/2-9,v.w,9);
+    ctx.fillStyle='#FFFFFF';ctx.font='bold 6px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('WASTE',0,v.h/4);
+  } else if(v.type==='rocket'){
+    // Body
+    ctx.fillStyle=flash?'#CFD8DC':v.color;
+    ctx.beginPath();ctx.moveTo(0,-v.h/2);ctx.lineTo(-v.w/2,v.h/4);ctx.lineTo(-v.w/2+4,v.h/2);ctx.lineTo(v.w/2-4,v.h/2);ctx.lineTo(v.w/2,v.h/4);ctx.closePath();ctx.fill();
+    // Blue nose cone
+    ctx.fillStyle=v.trim;
+    ctx.beginPath();ctx.moveTo(0,-v.h/2);ctx.lineTo(-v.w/2+4,-v.h/8);ctx.lineTo(v.w/2-4,-v.h/8);ctx.closePath();ctx.fill();
+    // Window
+    ctx.fillStyle='rgba(150,230,255,0.85)';ctx.beginPath();ctx.arc(0,-v.h/8,7,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=v.trim;ctx.lineWidth=1.5;ctx.stroke();
+    // Fins
+    ctx.fillStyle='#0D47A1';
+    ctx.beginPath();ctx.moveTo(-v.w/2,v.h/4);ctx.lineTo(-v.w/2-10,v.h/2);ctx.lineTo(-v.w/2,v.h/2);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(v.w/2,v.h/4);ctx.lineTo(v.w/2+10,v.h/2);ctx.lineTo(v.w/2,v.h/2);ctx.closePath();ctx.fill();
+    // Exhaust nozzle
+    ctx.fillStyle='#546E7A';ctx.beginPath();ctx.moveTo(-v.w/2+6,v.h/2);ctx.lineTo(v.w/2-6,v.h/2);ctx.lineTo(v.w/2-10,v.h/2+10);ctx.lineTo(-v.w/2+10,v.h/2+10);ctx.closePath();ctx.fill();
+    // Flame when moving
+    if(v.speed>0.5){
+      const fp=v.speed/v.maxSpeed;
+      const fg=ctx.createLinearGradient(0,v.h/2+8,0,v.h/2+28*fp);
+      fg.addColorStop(0,'#FFEB3B');fg.addColorStop(0.5,'#FF6F00');fg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=fg;ctx.beginPath();ctx.moveTo(-8,v.h/2+8);ctx.lineTo(0,v.h/2+28*fp);ctx.lineTo(8,v.h/2+8);ctx.closePath();ctx.fill();
+    }
+    // Missile cooldown indicator
+    if(rocketCooldown>0){ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(-v.w/2,-v.h/2-10,v.w,6);ctx.fillStyle='#F44336';ctx.fillRect(-v.w/2,-v.h/2-10,v.w*(1-rocketCooldown/22),6);}
+  } else if(v.type==='train'){
+    // Drawn by drawTrain() — just show active ring + speed bar
+    if(isActive){
+      ctx.rotate(-v.angle);
+      ctx.strokeStyle='#FFEB3B';ctx.lineWidth=3;ctx.strokeRect(-22,-36,44,72);
+      ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(-22,-52,44,9);
+      ctx.fillStyle=train.speed>4?'#F44336':train.speed>2?'#FFEB3B':'#4CAF50';
+      ctx.fillRect(-22,-52,44*(train.speed/6.5),9);
+    }
+    ctx.restore();return;
+  } else if(v.type==='cleaner'){
+    ctx.fillStyle=flash?'#FFD54F':v.color;ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    ctx.fillStyle=v.trim;ctx.fillRect(-v.w/2,-v.h/2,v.w,13);ctx.fillRect(-v.w/2,v.h/2-13,v.w,13);
+    // Water tank (blue rectangle on body)
+    ctx.fillStyle='#29B6F6';ctx.fillRect(-v.w/2+8,-v.h/2+16,v.w-16,v.h-42);
+    ctx.fillStyle='rgba(200,240,255,0.4)';ctx.fillRect(-v.w/2+10,-v.h/2+18,v.w-20,10);
+    // Spinning brushes at front bottom
+    const bA=Date.now()*0.012;
+    const brushX=[-v.w/2+10,v.w/2-10];
+    for(const bx of brushX){
+      ctx.strokeStyle='#FF6F00';ctx.lineWidth=2.5;
+      for(let i=0;i<4;i++){const a=bA+i*Math.PI/2+(bx<0?0:Math.PI);ctx.beginPath();ctx.moveTo(bx,v.h/2-10);ctx.lineTo(bx+Math.cos(a)*12,v.h/2-10+Math.sin(a)*12);ctx.stroke();}
+      ctx.fillStyle='#E65100';ctx.beginPath();ctx.arc(bx,v.h/2-10,4,0,Math.PI*2);ctx.fill();
+    }
+    // Water spray behind when moving
+    if(v.speed>0.4){ctx.fillStyle='rgba(100,200,255,0.38)';for(let i=-2;i<=2;i++){ctx.beginPath();ctx.ellipse(i*9,v.h/2+10,3,7,0,0,Math.PI*2);ctx.fill();}}
+    // Orange flashing warning light
+    const oOn=Math.sin(v.sirenPhase*1.6)>0;
+    ctx.fillStyle=oOn?'#FF6F00':'rgba(180,60,0,0.25)';ctx.fillRect(-v.w/2,-v.h/2-9,v.w,9);
+    ctx.fillStyle='#212121';ctx.font='bold 7px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('CLEAN',0,v.h/4);
+  } else if(v.type==='pizzacar'){
+    // Cheerful yellow delivery car
+    ctx.fillStyle=flash?'#FFE082':v.color;ctx.fillRect(-v.w/2,-v.h/2,v.w,v.h);
+    ctx.fillStyle=v.trim;ctx.fillRect(-v.w/2,-v.h/2,v.w,11);ctx.fillRect(-v.w/2,v.h/2-11,v.w,11);
+    // Windshield
+    ctx.fillStyle='rgba(150,230,255,0.75)';ctx.fillRect(-v.w/2+4,-v.h/2+13,v.w-8,v.h/3);
+    // Pizza box on roof
+    ctx.fillStyle='#E65100';ctx.fillRect(-14,-v.h/2-14,28,18);
+    ctx.fillStyle='#FFEE58';ctx.fillRect(-11,-v.h/2-12,22,14);
+    ctx.font='11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🍕',0,-v.h/2-5);
+    // Flashing orange light
+    const pzOn=Math.sin(v.sirenPhase*1.8)>0;
+    ctx.fillStyle=pzOn?'#FF6F00':'rgba(200,80,0,0.2)';ctx.fillRect(-v.w/2,v.h/2-11,v.w,11);
+    ctx.fillStyle='#212121';ctx.font='bold 7px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('PIZZA',0,v.h/4);
+  } else if(v.type==='pizzabike'){
+    // Red pizza motorbike from above
+    // Frame
+    ctx.fillStyle=flash?'#EF9A9A':v.color;ctx.fillRect(-v.w/2,-v.h/2+6,v.w,v.h-12);
+    // Front/rear wheels
+    ctx.fillStyle='#212121';
+    ctx.beginPath();ctx.ellipse(0,-v.h/2+5,v.w/2,5,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(0,v.h/2-5,v.w/2,5,0,0,Math.PI*2);ctx.fill();
+    // Pizza bag on back
+    ctx.fillStyle='#FF6F00';ctx.fillRect(-9,v.h/2-20,18,16);
+    ctx.font='10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🍕',0,v.h/2-12);
+    // Handlebar
+    ctx.strokeStyle='#B71C1C';ctx.lineWidth=3;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(-v.w/2+2,-v.h/2+10);ctx.lineTo(v.w/2-2,-v.h/2+10);ctx.stroke();
+    // Speed lines when moving fast
+    if(v.speed>5){ctx.strokeStyle='rgba(255,200,0,0.5)';ctx.lineWidth=2;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*7,v.h/2+2);ctx.lineTo(i*7,v.h/2+10);ctx.stroke();}}
+  } else if(v.type==='jet'){
+    // Fighter jet from above: delta-wing silhouette
+    const jflash=flash?'#CFD8DC':v.color;
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.beginPath();ctx.moveTo(4,-v.h/2+6);ctx.lineTo(-v.w/2+4,v.h/4+4);ctx.lineTo(-8,v.h/2+4);ctx.lineTo(8,v.h/2+4);ctx.lineTo(v.w/2+4,v.h/4+4);ctx.closePath();ctx.fill();
+    // Main fuselage
+    ctx.fillStyle=jflash;
+    ctx.beginPath();ctx.moveTo(0,-v.h/2);ctx.lineTo(-7,-v.h/4);ctx.lineTo(-v.w/2,v.h/4);ctx.lineTo(-10,v.h/2);ctx.lineTo(0,v.h/3);ctx.lineTo(10,v.h/2);ctx.lineTo(v.w/2,v.h/4);ctx.lineTo(7,-v.h/4);ctx.closePath();ctx.fill();
+    // Spine stripe (darker centre)
+    ctx.fillStyle=v.trim;ctx.fillRect(-3,-v.h/2+2,6,v.h-8);
+    // Canopy
+    ctx.fillStyle='rgba(150,230,255,0.8)';ctx.beginPath();ctx.ellipse(0,-v.h/6,5,8,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=v.trim;ctx.lineWidth=1.2;ctx.stroke();
+    // Wing leading-edge detail
+    ctx.strokeStyle='#546E7A';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(0,-v.h/2);ctx.lineTo(-v.w/2,v.h/4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,-v.h/2);ctx.lineTo(v.w/2,v.h/4);ctx.stroke();
+    // Twin engine nozzles
+    ctx.fillStyle='#37474F';ctx.fillRect(-10,v.h/3,8,v.h/6);ctx.fillRect(2,v.h/3,8,v.h/6);
+    // === ENGINE FIRE (thrust flames — not weapons) ===
+    {const fp=Math.min(1,Math.max(0.1,v.speed/v.maxSpeed));
+    const flk=Math.sin(Date.now()*0.055)*0.18+0.82;
+    const flen=fp*34*flk;
+    for(const ex of[-9,9]){
+      const fg=ctx.createLinearGradient(ex,v.h/2,ex,v.h/2+flen);
+      fg.addColorStop(0,'rgba(220,240,255,0.98)');
+      fg.addColorStop(0.2,'rgba(120,190,255,0.9)');
+      fg.addColorStop(0.55,'rgba(255,160,30,0.75)');
+      fg.addColorStop(1,'rgba(255,50,0,0)');
+      ctx.fillStyle=fg;
+      ctx.beginPath();ctx.moveTo(ex-5,v.h/2);ctx.lineTo(ex,v.h/2+flen*1.12);ctx.lineTo(ex+5,v.h/2);ctx.closePath();ctx.fill();
+      // Outer heat halo
+      const hg=ctx.createRadialGradient(ex,v.h/2+flen*0.45,0,ex,v.h/2+flen*0.45,flen*0.65);
+      hg.addColorStop(0,'rgba(255,200,60,0.28)');hg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=hg;ctx.beginPath();ctx.arc(ex,v.h/2+flen*0.45,flen*0.65,0,Math.PI*2);ctx.fill();
+    }
+    // Afterburner glow ring at high speed
+    if(fp>0.7){ctx.strokeStyle='rgba(120,230,255,0.55)';ctx.lineWidth=2.5;for(const ex of[-9,9]){ctx.beginPath();ctx.arc(ex,v.h/2+3,6,0,Math.PI*2);ctx.stroke();}}}
+    // === LANDING GEAR (wheels visible when deployed) ===
+    if(v.gearDown){
+      ctx.fillStyle='#546E7A';ctx.fillRect(-3,-v.h/3-3,6,7);
+      ctx.fillStyle='#212121';ctx.beginPath();ctx.ellipse(0,-v.h/3+3,5,4,0,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#78909C';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(0,-v.h/3+3,5,0,Math.PI*2);ctx.stroke();
+      for(const wx of[-9,9]){
+        ctx.fillStyle='#546E7A';ctx.fillRect(wx-3,v.h/5-1,6,7);
+        ctx.fillStyle='#212121';ctx.beginPath();ctx.ellipse(wx,v.h/5+5,5,4,0,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#78909C';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(wx,v.h/5+5,5,0,Math.PI*2);ctx.stroke();
+      }
+    }
+    // Nav lights (red left, green right)
+    const jNav=Math.sin(v.sirenPhase*2)>0;
+    ctx.fillStyle=jNav?'#F44336':'rgba(200,0,0,0.2)';ctx.beginPath();ctx.arc(-v.w/2+4,v.h/4,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=!jNav?'#4CAF50':'rgba(0,150,0,0.2)';ctx.beginPath();ctx.arc(v.w/2-4,v.h/4,5,0,Math.PI*2);ctx.fill();
+    // Missile cooldown bar
+    if(jetMissileCooldown>0){ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(-v.w/2,-v.h/2-10,v.w,6);ctx.fillStyle='#F44336';ctx.fillRect(-v.w/2,-v.h/2-10,v.w*(1-jetMissileCooldown/18),6);}
+  } else if(v.type==='helicopter'){
+    const R=v.w/2;
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,0.28)';ctx.beginPath();ctx.ellipse(4,6,R,R*0.8,0,0,Math.PI*2);ctx.fill();
+    // Main body (circle)
+    ctx.fillStyle=flash?'#90CAF9':v.color;ctx.beginPath();ctx.arc(0,0,R,0,Math.PI*2);ctx.fill();
+    // Side stripe
+    ctx.fillStyle=v.trim;ctx.beginPath();ctx.arc(0,0,R,Math.PI*0.15,Math.PI*0.85);ctx.lineTo(0,0);ctx.closePath();ctx.fill();
+    // Tail boom
+    ctx.fillStyle='#1976D2';ctx.fillRect(-5,R-6,10,22);
+    // Tail rotor (horizontal)
+    const trAngle=Date.now()*0.022;
+    ctx.strokeStyle='#90A4AE';ctx.lineWidth=2.5;ctx.lineCap='round';
+    for(let i=0;i<2;i++){const a=trAngle+i*Math.PI;ctx.beginPath();ctx.moveTo(-6,R+14);ctx.lineTo(-6+Math.cos(a)*13,R+14+Math.sin(a)*13);ctx.stroke();}
+    // Main rotor (4 spinning blades)
+    const mrAngle=Date.now()*0.018;
+    ctx.strokeStyle='rgba(50,100,255,0.7)';ctx.lineWidth=4;ctx.lineCap='round';
+    for(let i=0;i<4;i++){const a=mrAngle+i*Math.PI/2;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(a)*(R+14),Math.sin(a)*(R+14));ctx.stroke();}
+    // Center hub
+    ctx.fillStyle='#37474F';ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();
+    // Cockpit window
+    ctx.fillStyle='rgba(150,230,255,0.85)';ctx.beginPath();ctx.ellipse(0,-R*0.28,10,8,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(100,180,255,0.5)';ctx.lineWidth=1.5;ctx.stroke();
+    // Carried person (dangling below on rope)
+    if(v.carrying||v.prisoner){
+      ctx.strokeStyle='#FFA000';ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.moveTo(0,R*0.6);ctx.lineTo(0,R+28);ctx.stroke();
+      ctx.fillStyle=v.prisoner?'#EF5350':'#FFD54F';
+      ctx.beginPath();ctx.arc(0,R+36,8,0,Math.PI*2);ctx.fill();
+      ctx.font='13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(v.prisoner?'😤':'😨',0,R+36);
+    }
+    // Police/rescue lights
+    const hLit=Math.sin(v.sirenPhase*2.2)>0;
+    ctx.fillStyle=hLit?'#1E88E5':'rgba(20,80,180,0.3)';ctx.fillRect(-R,-R-9,R,9);
+    ctx.fillStyle=!hLit?'#F44336':'rgba(200,0,0,0.3)';ctx.fillRect(0,-R-9,R,9);
+  }
+  // Wheels (ground vehicles only)
+  if(v.type!=='rocket'&&v.type!=='jet'&&v.type!=='helicopter'){
+  ctx.fillStyle='#212121';
+  ctx.fillRect(-v.w/2+4,v.h/2-3,12,6);ctx.fillRect(v.w/2-16,v.h/2-3,12,6);
+  ctx.fillRect(-v.w/2+4,-v.h/2-3,12,6);ctx.fillRect(v.w/2-16,-v.h/2-3,12,6);
+  }
+  // HP bar above
+  ctx.rotate(-v.angle);
+  ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(-22,-v.h/2-20,44,7);
+  ctx.fillStyle=v.hp>v.maxHp*0.5?'#4CAF50':v.hp>v.maxHp*0.25?'#FFC107':'#F44336';
+  ctx.fillRect(-22,-v.h/2-20,44*(Math.max(0,v.hp)/v.maxHp),7);
+  // Active highlight ring
+  if(isActive){ctx.strokeStyle='#FFEB3B';ctx.lineWidth=2.5;ctx.strokeRect(-v.w/2-4,-v.h/2-4,v.w+8,v.h+8);}
+  ctx.restore();
+}
+function drawParticles(){for(const p of particles){const[sx,sy]=w2s(p.x,p.y);if(sx<-20||sx>W+20||sy<-20||sy>H+20)continue;ctx.fillStyle=p.color;ctx.globalAlpha=Math.max(0,1-p.age/p.life)*0.9;ctx.beginPath();ctx.arc(sx,sy,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;}
+function drawRadar(){
+  for(const e of enemies){if(!e.alive)continue;const[sx,sy]=w2s(e.x,e.y);if(sx>-10&&sx<W+10&&sy>-10&&sy<H+10)continue;const m=45,cx=W/2,cy=H/2;const dx=sx-cx,dy=sy-cy,ang=Math.atan2(dy,dx);const hw=W/2-m,hh=H/2-m;const t=Math.min(hw/(Math.abs(Math.cos(ang))||1e-3),hh/(Math.abs(Math.sin(ang))||1e-3));const ax=cx+Math.cos(ang)*t,ay=cy+Math.sin(ang)*t;ctx.save();ctx.translate(ax,ay);ctx.rotate(ang);ctx.fillStyle='#FF1744';ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-8,-10);ctx.lineTo(-2,0);ctx.lineTo(-8,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
+}
+
+// ===== Main loop =====
+function loop(){
+  if(!isOver){
+    updateSpace();
+    for(let i=0;i<vehicles.length;i++)updateVehicle(vehicles[i],i===activeV);
+    updateProjectiles();updateWater();updatePoliceBullets();
+    updateEnemies();updateEBullets();updateCivilians();
+    updateTntCrates();updateBuildings();updateFires();updateParticles();
+    updateDirtySpots();updateTrash();if(Math.random()<0.004)spawnPizza();updateTrain();updateISS();updateRocketAutoPilot();updateJetAutoPilot();updateHeliAutoPilot();updateMissiles(issRockets);updateMissiles(playerMissiles);updateMissiles(jetMissiles);updateWave();updateStatusUi();updateActionHint();
+  }
+  drawGround();drawRunway();drawTrack();drawRoads();drawBusStops();drawTrainStops();drawTrashPiles();drawDirtySpots();drawPizzaItems();drawCraters();drawFires();
+  drawSpecialBuildings();drawBuildings();
+  drawTntCrates();drawCivilians();
+  drawEBullets();drawProjectiles();drawWater();drawPoliceBullets();
+  drawEnemies();
+  for(let i=0;i<vehicles.length;i++)if(i!==activeV)drawVehicle(vehicles[i],false);
+  drawVehicle(vehicles[activeV],true);
+  drawISS();drawMissiles(issRockets);drawMissiles(playerMissiles);drawMissiles(jetMissiles);drawTrain();drawParticles();drawRadar();
+  requestAnimationFrame(loop);
+}
+// Init cannon TNT stock
+vehicles[0].tntStock=5;
+loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>🌋 Volcano Pirates 🏴‍☠️</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Arial Black',Arial,sans-serif}
+canvas{display:block}
+#ui{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:10px 16px;pointer-events:none;z-index:10}
+#left-ui{display:flex;flex-direction:column;gap:6px}
+#vehicle-panel{background:rgba(0,0,0,0.7);border:2px solid #FFD700;border-radius:10px;padding:8px 14px;color:#FFD700;font-size:14px;min-width:180px}
+#vehicle-name{font-size:18px;font-weight:bold;letter-spacing:1px}
+#hp-bar-wrap{margin-top:4px;background:#333;border-radius:4px;height:10px;overflow:hidden}
+#hp-bar{height:10px;background:linear-gradient(90deg,#4CAF50,#8BC34A);border-radius:4px;transition:width 0.2s}
+#gold-display{background:rgba(0,0,0,0.7);border:2px solid #FFD700;border-radius:10px;padding:6px 14px;color:#FFD700;font-size:20px;font-weight:bold}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.85);color:#FFD700;font-size:22px;font-weight:bold;padding:14px 28px;border-radius:14px;border:2px solid #FFD700;pointer-events:none;z-index:20;text-align:center;display:none}
+#keys-hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#FFD700;font-size:13px;font-weight:bold;padding:8px 22px;border-radius:10px;border:1px solid #FFD700;pointer-events:none;z-index:10;text-align:center;letter-spacing:0.5px}
+#right-ui{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+#score-panel{background:rgba(0,0,0,0.7);border:2px solid #E53935;border-radius:10px;padding:6px 14px;color:#fff;font-size:13px;text-align:right}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="left-ui">
+    <div id="vehicle-panel">
+      <div id="vehicle-name">🛩️ Prop Plane</div>
+      <div id="hp-bar-wrap"><div id="hp-bar" style="width:100%"></div></div>
+      <div id="plane-speed" style="color:#aef;font-size:12px;margin-top:3px">Speed: 0</div>
+    </div>
+    <div id="gold-display">💰 Gold: 0</div>
+  </div>
+  <div id="right-ui">
+    <div id="score-panel">🏴‍☠️ Ships sunk: 0<br>🎯 Hits: 0</div>
+  </div>
+</div>
+<div id="msg"></div>
+<div id="keys-hint">🎮 WASD/Arrows=Move &nbsp;|&nbsp; SPACE=Bomb/Torpedo/Dive &nbsp;|&nbsp; 1=🛩️ 2=✈️ 3=🍌 4=△ 5=🚤 6=🤿 7=🔥Plane &nbsp;|&nbsp; 8=⚡ElectricTrain &nbsp;9=🚂GasTrain &nbsp;|&nbsp; R=Repair</div>
+
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+window.addEventListener('resize',()=>{
+  canvas.width=window.innerWidth;
+  canvas.height=window.innerHeight;
+  // Recenter camera on resize
+  if(planes&&planes[activeP]){
+    cam.x=planes[activeP].x-canvas.width/2;
+    cam.y=planes[activeP].y-canvas.height/2;
+    cam.x=Math.max(0,Math.min(W.w-canvas.width,cam.x));
+    cam.y=Math.max(0,Math.min(W.h-canvas.height,cam.y));
+  }
+});
+
+// ── World ──────────────────────────────────────────────────────────────────
+const W={w:4000,h:3200};
+const cam={x:0,y:0};
+
+function w2s(wx,wy){return[wx-cam.x,wy-cam.y];}
+function s2w(sx,sy){return[sx+cam.x,sy+cam.y];}
+
+// ── Island polygon ─────────────────────────────────────────────────────────
+const ISLAND_POLY=[
+  [1600,900],[1750,820],[1950,800],[2150,830],[2350,890],[2500,980],
+  [2560,1100],[2580,1250],[2530,1400],[2420,1520],[2280,1580],[2100,1600],
+  [1900,1590],[1750,1540],[1620,1450],[1530,1330],[1510,1180],[1540,1030]
+];
+const ISLAND_CENTER={x:2050,y:1200};
+
+function pointInIsland(px,py){
+  let inside=false;
+  for(let i=0,j=ISLAND_POLY.length-1;i<ISLAND_POLY.length;j=i++){
+    const xi=ISLAND_POLY[i][0],yi=ISLAND_POLY[i][1];
+    const xj=ISLAND_POLY[j][0],yj=ISLAND_POLY[j][1];
+    if(((yi>py)!=(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+
+// Small islands
+const SMALL_ISLANDS=[
+  {cx:600,cy:600,rx:160,ry:120},
+  {cx:3200,cy:500,rx:130,ry:100},
+  {cx:3400,cy:2200,rx:180,ry:130},
+  {cx:700,cy:2400,rx:150,ry:110},
+  {cx:3000,cy:2800,rx:120,ry:90},
+];
+
+function pointInSmallIsland(px,py){
+  for(const si of SMALL_ISLANDS){
+    const dx=(px-si.cx)/si.rx, dy=(py-si.cy)/si.ry;
+    if(dx*dx+dy*dy<1)return true;
+  }
+  return false;
+}
+
+function onWater(px,py){
+  return !pointInIsland(px,py)&&!pointInSmallIsland(px,py);
+}
+
+// ── Volcano ────────────────────────────────────────────────────────────────
+const VOLCANO={x:2350,y:950,r:120};
+let lavaRocks=[];
+let smokeParticles=[];
+let volcanoTimer=0;
+let erupting=false;
+let eruptTimer=0;
+
+function triggerEruption(){
+  erupting=true;
+  eruptTimer=180;
+  showMessage('🌋 VOLCANO ERUPTING! 🌋');
+  for(let i=0;i<18;i++){
+    const ang=-Math.PI/2+(Math.random()-0.5)*1.2;
+    const spd=4+Math.random()*6;
+    lavaRocks.push({
+      x:VOLCANO.x,y:VOLCANO.y-20,
+      vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-4,
+      vy0:Math.sin(ang)*spd-4,
+      life:120+Math.random()*60,maxLife:180,r:6+Math.random()*8
+    });
+  }
+}
+
+function updateVolcano(){
+  volcanoTimer++;
+  if(volcanoTimer>400){volcanoTimer=0;triggerEruption();}
+  if(eruptTimer>0){
+    eruptTimer--;
+    if(Math.random()<0.4){
+      smokeParticles.push({
+        x:VOLCANO.x+(Math.random()-0.5)*30,y:VOLCANO.y-30,
+        vx:(Math.random()-0.5)*0.8,vy:-1.2-Math.random()*1.5,
+        life:90+Math.random()*60,maxLife:140,r:18+Math.random()*20,
+        alpha:0.6
+      });
+    }
+  }
+  for(let i=lavaRocks.length-1;i>=0;i--){
+    const r=lavaRocks[i];
+    r.vy+=0.18;r.x+=r.vx;r.y+=r.vy;r.life--;
+    if(r.life<=0)lavaRocks.splice(i,1);
+  }
+  for(let i=smokeParticles.length-1;i>=0;i--){
+    const s=smokeParticles[i];
+    s.x+=s.vx;s.y+=s.vy;s.life--;s.r+=0.3;s.alpha*=0.98;
+    if(s.life<=0)smokeParticles.splice(i,1);
+  }
+}
+
+// ── Runway ─────────────────────────────────────────────────────────────────
+const RUNWAY={x1:1550,y1:1470,x2:1550,y2:1260,w:60};
+const RWY={x:1600,y:1500,len:380,rot:-0.18};
+const AIRPORT={x:1700,y:1470,w:200,h:110};
+
+// ── Second airport on small island ─────────────────────────────────────────
+const AIRPORT2={x:600,y:600,w:150,h:80};
+const RWY2={x:600,y:590,len:260,rot:0.1};
+
+// ── Bridge between main island and small island ────────────────────────────
+// Bridge goes from main island west (~1530,1150) to small island east (~750,640)
+const BRIDGE_POINTS=[
+  {x:1530,y:1150},{x:1350,y:1050},{x:1150,y:900},
+  {x:950,y:790},{x:750,y:660}
+];
+const BRIDGE_WIDTH=40;
+
+// ── Electric Train ─────────────────────────────────────────────────────────
+// Runs automatically along bridge track
+// ── Two driveable trains ───────────────────────────────────────────────────
+const TRAINS=[
+  { // 0 = Electric train
+    type:'electric', label:'⚡ Electric Train',
+    t:0.0, dir:1, speed:0, maxSpeed:0.008, accel:0.0003,
+    x:0,y:0,angle:0, sparks:[], smoke:[],
+  },
+  { // 1 = Gas/Steam train
+    type:'gas', label:'🔥 Gas Train',
+    t:1.0, dir:-1, speed:0, maxSpeed:0.006, accel:0.00025,
+    x:0,y:0,angle:0, sparks:[], smoke:[],
+  },
+];
+let activeTrain=-1; // -1 = none active (planes control camera)
+
+function getBridgePos(t){
+  const segs=BRIDGE_POINTS.length-1;
+  const seg=Math.min(segs-1,Math.floor(t*segs));
+  const frac=(t*segs)-seg;
+  const a=BRIDGE_POINTS[seg], b=BRIDGE_POINTS[seg+1];
+  return {
+    x:a.x+(b.x-a.x)*frac,
+    y:a.y+(b.y-a.y)*frac,
+    angle:Math.atan2(b.y-a.y,b.x-a.x),
+  };
+}
+
+function switchTrain(i){
+  activeTrain=i;
+  activeP=-1; // deactivate plane control
+  showMessage(TRAINS[i].label+' — UP/DOWN to drive!');
+}
+
+function updateTrain(){
+  const up=keys['ArrowUp']||keys['w']||keys['W'];
+  const dn=keys['ArrowDown']||keys['s']||keys['S'];
+
+  for(let i=0;i<TRAINS.length;i++){
+    const tr=TRAINS[i];
+    if(activeTrain===i){
+      // Player drives this train
+      if(up){ tr.speed=Math.min(tr.maxSpeed, tr.speed+tr.accel); }
+      else { tr.speed=Math.max(0, tr.speed-tr.accel*0.5); }
+      if(dn){ tr.speed=Math.max(0, tr.speed-tr.accel*1.5); }
+    } else {
+      // Auto-pilot
+      tr.speed=Math.min(tr.maxSpeed*0.55, tr.speed+tr.accel*0.4);
+    }
+
+    tr.t+=tr.speed*tr.dir;
+    if(tr.t>=1){ tr.t=1; tr.dir=-1; tr.speed=0;
+      showMessage(tr.label+' arrived at small airport! 🛬'); }
+    if(tr.t<=0){ tr.t=0; tr.dir=1; tr.speed=0;
+      showMessage(tr.label+' arrived at main airport! 🛬'); }
+
+    const pos=getBridgePos(tr.t);
+    tr.x=pos.x; tr.y=pos.y; tr.angle=pos.angle;
+
+    if(tr.type==='electric'){
+      // Electric sparks
+      if(Math.random()<0.35){
+        tr.sparks.push({x:tr.x,y:tr.y-18,
+          vx:(Math.random()-0.5)*2,vy:-1-Math.random()*2,life:12});
+      }
+      for(let j=tr.sparks.length-1;j>=0;j--){
+        const s=tr.sparks[j];s.x+=s.vx;s.y+=s.vy;s.life--;
+        if(s.life<=0)tr.sparks.splice(j,1);
+      }
+    } else {
+      // Steam smoke puffs
+      if(tr.speed>0.001&&Math.random()<0.4){
+        tr.smoke.push({
+          x:tr.x+Math.cos(tr.angle+Math.PI)*28,
+          y:tr.y+Math.sin(tr.angle+Math.PI)*28,
+          vx:(Math.random()-0.5)*1,vy:-1.4-Math.random()*1.2,
+          life:55+Math.random()*30,maxLife:75,r:10+Math.random()*8,alpha:0.65
+        });
+      }
+      for(let j=tr.smoke.length-1;j>=0;j--){
+        const s=tr.smoke[j];s.x+=s.vx;s.y+=s.vy;s.life--;s.r+=0.25;s.alpha*=0.975;
+        if(s.life<=0)tr.smoke.splice(j,1);
+      }
+    }
+  }
+
+  // Camera follows active train
+  if(activeTrain>=0){
+    const tr=TRAINS[activeTrain];
+    cam.x=tr.x-canvas.width/2;
+    cam.y=tr.y-canvas.height/2;
+    cam.x=Math.max(0,Math.min(W.w-canvas.width,cam.x));
+    cam.y=Math.max(0,Math.min(W.h-canvas.height,cam.y));
+  }
+}
+
+function drawBridge(){
+  // Bridge deck shadow
+  ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=BRIDGE_WIDTH+8;ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.beginPath();
+  for(let i=0;i<BRIDGE_POINTS.length;i++){
+    const [sx,sy]=w2s(BRIDGE_POINTS[i].x,BRIDGE_POINTS[i].y+6);
+    if(i===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
+  }
+  ctx.stroke();
+  // Bridge deck
+  ctx.strokeStyle='#78909C';ctx.lineWidth=BRIDGE_WIDTH;
+  ctx.beginPath();
+  for(let i=0;i<BRIDGE_POINTS.length;i++){
+    const [sx,sy]=w2s(BRIDGE_POINTS[i].x,BRIDGE_POINTS[i].y);
+    if(i===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
+  }
+  ctx.stroke();
+  // Road markings
+  ctx.strokeStyle='#FFD700';ctx.lineWidth=2;ctx.setLineDash([18,12]);
+  ctx.beginPath();
+  for(let i=0;i<BRIDGE_POINTS.length;i++){
+    const [sx,sy]=w2s(BRIDGE_POINTS[i].x,BRIDGE_POINTS[i].y);
+    if(i===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+  // Bridge cables / pillars
+  ctx.strokeStyle='#546E7A';ctx.lineWidth=3;
+  for(let i=1;i<BRIDGE_POINTS.length-1;i++){
+    const [sx,sy]=w2s(BRIDGE_POINTS[i].x,BRIDGE_POINTS[i].y);
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx,sy-55);ctx.stroke();
+    ctx.fillStyle='#455A64';ctx.beginPath();ctx.arc(sx,sy-55,7,0,Math.PI*2);ctx.fill();
+    // Cable lines
+    ctx.strokeStyle='rgba(120,144,156,0.7)';ctx.lineWidth=1.5;
+    for(const bp of BRIDGE_POINTS){
+      const [bx,by]=w2s(bp.x,bp.y);
+      ctx.beginPath();ctx.moveTo(sx,sy-55);ctx.lineTo(bx,by);ctx.stroke();
+    }
+    ctx.strokeStyle='#546E7A';ctx.lineWidth=3;
+  }
+  // Train track rail lines
+  ctx.strokeStyle='#B0BEC5';ctx.lineWidth=5;ctx.lineCap='round';
+  for(const offset of[-6,6]){
+    ctx.beginPath();
+    for(let i=0;i<BRIDGE_POINTS.length;i++){
+      const bp=BRIDGE_POINTS[i];
+      const ang=i<BRIDGE_POINTS.length-1?Math.atan2(BRIDGE_POINTS[i+1].y-bp.y,BRIDGE_POINTS[i+1].x-bp.x):ETRAIN.angle;
+      const px2=bp.x+Math.sin(ang)*offset, py2=bp.y-Math.cos(ang)*offset;
+      const [sx,sy]=w2s(px2,py2);
+      if(i===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
+    }
+    ctx.stroke();
+  }
+  // Sleepers
+  ctx.strokeStyle='#5D4037';ctx.lineWidth=4;
+  for(let t=0;t<=1;t+=0.08){
+    const pos=getBridgePos(Math.min(0.999,t));
+    const [sx,sy]=w2s(pos.x,pos.y);
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(pos.angle);
+    ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,10);ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawElectricTrain(tr, isActive){
+  const [tx,ty]=w2s(tr.x,tr.y);
+  ctx.save();ctx.translate(tx,ty);ctx.rotate(tr.angle);
+  const carLen=34,carGap=4;
+  for(let c=0;c<3;c++){
+    const cx=-(c*(carLen+carGap));
+    ctx.fillStyle=c===0?'#1565C0':'#E3F2FD';
+    ctx.fillRect(cx-carLen/2,-10,carLen,20);
+    ctx.strokeStyle=c===0?'#0D47A1':'#1565C0';ctx.lineWidth=1.5;
+    ctx.strokeRect(cx-carLen/2,-10,carLen,20);
+    ctx.fillStyle='#B3E5FC';
+    if(c===0){
+      ctx.fillRect(cx+2,-8,10,12);
+      ctx.strokeStyle='#90A4AE';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(cx-8,-10);ctx.lineTo(cx-4,-22);ctx.lineTo(cx+4,-22);ctx.lineTo(cx+8,-10);ctx.stroke();
+      ctx.strokeStyle='#FFD700';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(cx-8,-22);ctx.lineTo(cx+8,-22);ctx.stroke();
+    } else {
+      for(let w=0;w<3;w++) ctx.fillRect(cx-carLen/2+4+w*10,-7,7,10);
+    }
+    ctx.fillStyle='#212121';
+    ctx.beginPath();ctx.arc(cx-10,10,5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+10,10,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#B0BEC5';
+    ctx.beginPath();ctx.arc(cx-10,10,3,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+10,10,3,0,Math.PI*2);ctx.fill();
+  }
+  // Speed label
+  if(isActive){
+    const pulse=0.6+Math.sin(Date.now()*0.007)*0.4;
+    ctx.fillStyle=`rgba(255,255,0,${pulse})`;ctx.font='bold 12px Arial';ctx.textAlign='center';
+    ctx.fillText('▼ YOU  ⬆️=Go',0,-30);
+    ctx.strokeStyle=`rgba(255,255,0,${pulse})`;ctx.lineWidth=2;ctx.setLineDash([5,4]);
+    ctx.strokeRect(-carLen/2,-12,carLen,24);ctx.setLineDash([]);
+  }
+  ctx.restore();
+  // Electric sparks
+  for(const s of tr.sparks){
+    const [sx,sy]=w2s(s.x,s.y);
+    const t=s.life/12;
+    ctx.fillStyle=`rgba(255,230,0,${t})`;
+    ctx.beginPath();ctx.arc(sx,sy,2+t*3,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawGasTrain(tr, isActive){
+  // Steam smoke first (behind train)
+  for(const s of tr.smoke){
+    const [sx,sy]=w2s(s.x,s.y);
+    const fade=s.life/s.maxLife;
+    ctx.globalAlpha=s.alpha*fade;
+    ctx.fillStyle=`rgb(${140+Math.floor(fade*80)},${140+Math.floor(fade*80)},${140+Math.floor(fade*80)})`;
+    ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  const [tx,ty]=w2s(tr.x,tr.y);
+  ctx.save();ctx.translate(tx,ty);ctx.rotate(tr.angle);
+
+  // Coal car (last)
+  ctx.fillStyle='#37474F';ctx.fillRect(-110,-9,36,18);
+  ctx.strokeStyle='#263238';ctx.lineWidth=1.5;ctx.strokeRect(-110,-9,36,18);
+  ctx.fillStyle='#212121';
+  for(let i=0;i<4;i++){ // coal lumps
+    ctx.beginPath();ctx.arc(-100+i*8,(Math.random()*2-1)*3,4,0,Math.PI*2);ctx.fill();
+  }
+  ctx.fillStyle='#212121';
+  ctx.beginPath();ctx.arc(-100,10,5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-82,10,5,0,Math.PI*2);ctx.fill();
+
+  // Passenger car
+  ctx.fillStyle='#8D6E63';ctx.fillRect(-66,-11,52,22);
+  ctx.strokeStyle='#5D4037';ctx.lineWidth=1.5;ctx.strokeRect(-66,-11,52,22);
+  ctx.fillStyle='#FFEB3B';
+  for(let w=0;w<3;w++) ctx.fillRect(-62+w*16,-8,11,12);
+  ctx.fillStyle='#212121';
+  ctx.beginPath();ctx.arc(-56,11,5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-28,11,5,0,Math.PI*2);ctx.fill();
+
+  // Locomotive engine body
+  ctx.fillStyle='#212121';ctx.fillRect(-14,-13,52,26);
+  ctx.strokeStyle='#424242';ctx.lineWidth=2;ctx.strokeRect(-14,-13,52,26);
+  // Boiler dome
+  ctx.fillStyle='#E53935';
+  ctx.beginPath();ctx.ellipse(14,-13,20,10,0,0,Math.PI,Math.PI*2);ctx.fill();
+  // Red stripe
+  ctx.fillStyle='#E53935';ctx.fillRect(-14,-4,52,8);
+  // Chimney / smokestack
+  ctx.fillStyle='#424242';
+  ctx.fillRect(28,-25,12,14);
+  ctx.fillRect(24,-28,20,6);
+  // Cow-catcher front
+  ctx.fillStyle='#757575';
+  ctx.beginPath();ctx.moveTo(38,-13);ctx.lineTo(54,-8);ctx.lineTo(54,8);ctx.lineTo(38,13);ctx.closePath();ctx.fill();
+  // Big drive wheels
+  ctx.fillStyle='#212121';
+  for(const wx of[-4,14,30]){
+    ctx.beginPath();ctx.arc(wx,13,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#9E9E9E';ctx.beginPath();ctx.arc(wx,13,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#212121';
+  }
+  // Cab window
+  ctx.fillStyle='#FFEB3B';ctx.fillRect(-12,-10,16,14);
+  // Connecting rod animation
+  const rodAng=Date.now()*0.008;
+  ctx.strokeStyle='#9E9E9E';ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(-4+Math.cos(rodAng)*5,13+Math.sin(rodAng)*5);
+  ctx.lineTo(14+Math.cos(rodAng+1)*5,13+Math.sin(rodAng+1)*5);
+  ctx.lineTo(30+Math.cos(rodAng+2)*5,13+Math.sin(rodAng+2)*5);
+  ctx.stroke();
+
+  if(isActive){
+    const pulse=0.6+Math.sin(Date.now()*0.007)*0.4;
+    ctx.fillStyle=`rgba(255,255,0,${pulse})`;ctx.font='bold 12px Arial';ctx.textAlign='center';
+    ctx.fillText('▼ YOU  ⬆️=Go',18,-36);
+    ctx.strokeStyle=`rgba(255,255,0,${pulse})`;ctx.lineWidth=2;ctx.setLineDash([5,4]);
+    ctx.strokeRect(-14,-13,52,26);ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
+function drawTrain(){
+  for(let i=0;i<TRAINS.length;i++){
+    const tr=TRAINS[i];
+    if(tr.type==='electric') drawElectricTrain(tr, activeTrain===i);
+    else drawGasTrain(tr, activeTrain===i);
+  }
+}
+
+function drawAirport2(){
+  const [ax,ay]=w2s(AIRPORT2.x,AIRPORT2.y);
+  // Runway
+  const [rx,ry]=w2s(RWY2.x,RWY2.y);
+  ctx.save();ctx.translate(rx,ry);ctx.rotate(RWY2.rot);
+  ctx.fillStyle='#37474F';ctx.fillRect(-RWY2.w/2-10,-RWY2.len/2,RWY2.w+20,RWY2.len);
+  ctx.strokeStyle='#FFEB3B';ctx.lineWidth=2;ctx.setLineDash([14,10]);
+  ctx.beginPath();ctx.moveTo(0,-RWY2.len/2+10);ctx.lineTo(0,RWY2.len/2-10);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#fff';
+  for(let i=0;i<4;i++){ctx.fillRect(-RWY2.w/2+4+i*9,-RWY2.len/2+5,7,22);ctx.fillRect(-RWY2.w/2+4+i*9,RWY2.len/2-27,7,22);}
+  ctx.restore();
+  // Terminal
+  ctx.fillStyle='#B0BEC5';ctx.fillRect(ax-AIRPORT2.w/2,ay-AIRPORT2.h/2,AIRPORT2.w,AIRPORT2.h);
+  ctx.strokeStyle='#546E7A';ctx.lineWidth=2;ctx.strokeRect(ax-AIRPORT2.w/2,ay-AIRPORT2.h/2,AIRPORT2.w,AIRPORT2.h);
+  ctx.fillStyle='#78909C';ctx.fillRect(ax-AIRPORT2.w/2,ay-AIRPORT2.h/2,AIRPORT2.w,15);
+  // Sign
+  ctx.fillStyle='#1A237E';ctx.fillRect(ax-50,ay-AIRPORT2.h/2-22,100,20);
+  ctx.fillStyle='#fff';ctx.font='bold 11px Arial';ctx.textAlign='center';
+  ctx.fillText('✈ AIRPORT 2',ax,ay-AIRPORT2.h/2-7);
+  // Mini tower
+  ctx.fillStyle='#90A4AE';ctx.fillRect(ax+AIRPORT2.w/2-22,ay-AIRPORT2.h/2-44,16,48);
+  ctx.fillStyle='#4DB6AC';ctx.fillRect(ax+AIRPORT2.w/2-27,ay-AIRPORT2.h/2-52,26,14);
+  // Train station sign
+  ctx.fillStyle='#E53935';ctx.fillRect(ax-AIRPORT2.w/2-5,ay+AIRPORT2.h/2+2,AIRPORT2.w+10,18);
+  ctx.fillStyle='#fff';ctx.font='bold 10px Arial';ctx.textAlign='center';
+  ctx.fillText('🚆 TRAIN STATION',ax,ay+AIRPORT2.h/2+14);
+}
+
+// ── Pirate ships ───────────────────────────────────────────────────────────
+const SHIP_COLORS=['#5D4037','#4E342E','#6D4C41','#795548','#8D6E63'];
+let ships=[];
+let shipsSunk=0;
+let hits=0;
+let gold=0;
+
+function spawnShips(){
+  const routes=[
+    [{x:300,y:400},{x:1100,y:300},{x:300,y:600}],
+    [{x:3500,y:600},{x:3700,y:1200},{x:3500,y:1800}],
+    [{x:200,y:1600},{x:400,y:2200},{x:800,y:2600}],
+    [{x:3600,y:2500},{x:3000,y:2900},{x:2400,y:2800}],
+    [{x:1200,y:2700},{x:600,y:2400},{x:300,y:1800}],
+  ];
+  for(let i=0;i<5;i++){
+    const route=routes[i];
+    ships.push({
+      id:i,x:route[0].x,y:route[0].y,
+      angle:0,speed:0.7+Math.random()*0.5,
+      route,routeIdx:1,
+      hp:100,maxHp:100,
+      fireTimer:Math.floor(Math.random()*200),
+      cannonballs:[],
+      alive:true,
+      sinkAnim:0,
+      color:SHIP_COLORS[i],
+    });
+  }
+}
+
+function updateShips(){
+  for(const s of ships){
+    if(!s.alive){s.sinkAnim++;continue;}
+    const tgt=s.route[s.routeIdx];
+    const dx=tgt.x-s.x,dy=tgt.y-s.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    s.angle=Math.atan2(dy,dx);
+    if(dist<30){s.routeIdx=(s.routeIdx+1)%s.route.length;}
+    s.x+=Math.cos(s.angle)*s.speed;
+    s.y+=Math.sin(s.angle)*s.speed;
+    // Fire at planes
+    s.fireTimer--;
+    if(s.fireTimer<=0){
+      s.fireTimer=200+Math.floor(Math.random()*200);
+      const plane=planes[activeP];
+      if(plane.airborne){
+        const pdx=plane.x-s.x,pdy=plane.y-s.y;
+        const pDist=Math.sqrt(pdx*pdx+pdy*pdy);
+        if(pDist<600&&!(plane.type==='sub'&&plane.dived)){
+          const ang=Math.atan2(pdy,pdx);
+          s.cannonballs.push({x:s.x,y:s.y,vx:Math.cos(ang)*5,vy:Math.sin(ang)*5,life:120});
+        }
+      }
+    }
+    // Update cannonballs
+    for(let i=s.cannonballs.length-1;i>=0;i--){
+      const cb=s.cannonballs[i];
+      cb.x+=cb.vx;cb.y+=cb.vy;cb.life--;
+      // Hit player
+      const plane=planes[activeP];
+      const cbdx=cb.x-plane.x,cbdy=cb.y-plane.y;
+      if(Math.sqrt(cbdx*cbdx+cbdy*cbdy)<22&&(plane.airborne||plane.isWater)&&!(plane.type==='sub'&&plane.dived)){
+        plane.hp=Math.max(0,plane.hp-12);
+        s.cannonballs.splice(i,1);
+        addParticle(plane.x,plane.y,'#FF5722',8);
+        showMessage('💥 Hit by cannonball!');
+        continue;
+      }
+      if(cb.life<=0)s.cannonballs.splice(i,1);
+    }
+  }
+}
+
+// ── Sea Blades (swordfish monsters) ───────────────────────────────────────
+let seaBlades=[];
+
+function spawnSeaBlades(){
+  const starts=[
+    {x:300,y:1000,ang:0.4},
+    {x:3500,y:1500,ang:Math.PI+0.3},
+    {x:1500,y:2700,ang:-0.8},
+  ];
+  for(const s of starts){
+    seaBlades.push({
+      x:s.x,y:s.y,angle:s.ang,
+      speed:2.8+Math.random()*1.2,
+      turnSpeed:0.025+Math.random()*0.01,
+      hp:60,maxHp:60,
+      chaseTimer:0,
+      slashTimer:0,
+      alive:true,
+      sinkAnim:0,
+      tailWag:0,
+    });
+  }
+}
+
+function updateSeaBlades(){
+  const playerPlane=planes[activeP];
+  for(const b of seaBlades){
+    if(!b.alive){b.sinkAnim++;continue;}
+    b.tailWag+=0.18;
+    b.slashTimer=Math.max(0,b.slashTimer-1);
+
+    // Chase nearest pirate ship OR player boat/sub
+    let tgtX=null,tgtY=null,bestDist=9999;
+    for(const s of ships){
+      if(!s.alive)continue;
+      const d=Math.sqrt((s.x-b.x)**2+(s.y-b.y)**2);
+      if(d<bestDist){bestDist=d;tgtX=s.x;tgtY=s.y;}
+    }
+    // Also chase player water vehicles if close
+    if(playerPlane.isWater&&!playerPlane.dived){
+      const pd=Math.sqrt((playerPlane.x-b.x)**2+(playerPlane.y-b.y)**2);
+      if(pd<300&&pd<bestDist){bestDist=pd;tgtX=playerPlane.x;tgtY=playerPlane.y;}
+    }
+
+    if(tgtX!==null){
+      const desiredAng=Math.atan2(tgtY-b.y,tgtX-b.x);
+      let diff=desiredAng-b.angle;
+      while(diff>Math.PI)diff-=Math.PI*2;
+      while(diff<-Math.PI)diff+=Math.PI*2;
+      b.angle+=Math.sign(diff)*Math.min(b.turnSpeed,Math.abs(diff));
+    } else {
+      // Wander on water
+      b.angle+=Math.sin(b.tailWag*0.3)*0.015;
+    }
+
+    const nx=b.x+Math.cos(b.angle)*b.speed;
+    const ny=b.y+Math.sin(b.angle)*b.speed;
+    if(onWater(nx,ny)){b.x=nx;b.y=ny;}
+    else{b.angle+=Math.PI*0.4;}
+    b.x=Math.max(0,Math.min(W.w,b.x));
+    b.y=Math.max(0,Math.min(W.h,b.y));
+
+    // Slash ships
+    for(const s of ships){
+      if(!s.alive)continue;
+      const d=Math.sqrt((s.x-b.x)**2+(s.y-b.y)**2);
+      if(d<45&&b.slashTimer===0){
+        s.hp-=20;b.slashTimer=60;
+        explosions.push({x:s.x,y:s.y,r:0,maxR:40,life:25,maxLife:25});
+        addParticle(s.x,s.y,'#29B6F6',8);
+        if(s.hp<=0){s.alive=false;shipsSunk++;gold+=150;showMessage('🐟 Sea Blade sank a pirate! +150g!');updateScoreUI();}
+      }
+    }
+    // Bump player water vehicle
+    if(playerPlane.isWater&&!playerPlane.dived&&b.slashTimer===0){
+      const pd=Math.sqrt((playerPlane.x-b.x)**2+(playerPlane.y-b.y)**2);
+      if(pd<40){
+        playerPlane.hp=Math.max(0,playerPlane.hp-15);
+        b.slashTimer=90;
+        showMessage('⚔️ Sea Blade slashed you!');
+        addParticle(playerPlane.x,playerPlane.y,'#29B6F6',8);
+      }
+    }
+  }
+}
+
+function drawSeaBlades(){
+  for(const b of seaBlades){
+    if(!b.alive){
+      if(b.sinkAnim<40){
+        const [bx,by]=w2s(b.x,b.y);
+        ctx.globalAlpha=1-b.sinkAnim/40;
+        ctx.fillStyle='#29B6F6';ctx.beginPath();ctx.arc(bx,by,8,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=1;
+      }
+      continue;
+    }
+    const [bx,by]=w2s(b.x,b.y);
+    ctx.save();ctx.translate(bx,by);ctx.rotate(b.angle);
+    const wag=Math.sin(b.tailWag)*8;
+
+    // Tail fin (wagging)
+    ctx.fillStyle='#0288D1';
+    ctx.save();ctx.translate(-42,0);ctx.rotate(wag*0.04);
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-18,-18);ctx.lineTo(-18,18);ctx.closePath();ctx.fill();
+    ctx.restore();
+
+    // Body
+    ctx.fillStyle='#29B6F6';
+    ctx.beginPath();
+    ctx.moveTo(45,0);  // nose tip
+    ctx.bezierCurveTo(20,-14,-20,-12,-42,wag*0.3);
+    ctx.bezierCurveTo(-20,12+wag*0.2,20,14,45,0);
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#0277BD';ctx.lineWidth=1.5;ctx.stroke();
+
+    // Belly lighter
+    ctx.fillStyle='rgba(178,235,242,0.5)';
+    ctx.beginPath();ctx.ellipse(0,3,22,7,0,0,Math.PI*2);ctx.fill();
+
+    // Dorsal fin
+    ctx.fillStyle='#0288D1';
+    ctx.beginPath();ctx.moveTo(5,-12);ctx.lineTo(18,-26);ctx.lineTo(28,-12);ctx.closePath();ctx.fill();
+
+    // THE BLADE — long sharp sword
+    ctx.strokeStyle='#E0E0E0';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(45,0);ctx.lineTo(110,0);ctx.stroke();
+    ctx.strokeStyle='#B0BEC5';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(80,-2);ctx.lineTo(110,0);ctx.lineTo(80,2);ctx.stroke();
+    // Blade shine
+    ctx.strokeStyle='rgba(255,255,255,0.8)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(50,-1);ctx.lineTo(108,-1);ctx.stroke();
+
+    // Eye
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(26,-4,6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#01579B';ctx.beginPath();ctx.arc(28,-4,3.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(29,-4,1.5,0,Math.PI*2);ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+// ── Bombs ──────────────────────────────────────────────────────────────────
+let bombs=[];
+let explosions=[];
+
+function dropBomb(plane){
+  if(!plane.airborne)return;
+  bombs.push({x:plane.x,y:plane.y,vx:plane.vx*0.4,vy:plane.vy*0.4+1.5,life:180,r:8});
+  showMessage('💣 Bomb away!');
+}
+
+function updateBombs(){
+  for(let i=bombs.length-1;i>=0;i--){
+    const b=bombs[i];
+    b.vy+=0.15;b.x+=b.vx;b.y+=b.vy;b.life--;
+    // Hit ships
+    for(const s of ships){
+      if(!s.alive)continue;
+      const dx=b.x-s.x,dy=b.y-s.y;
+      if(Math.sqrt(dx*dx+dy*dy)<40){
+        s.hp-=35;hits++;
+        explosions.push({x:s.x,y:s.y,r:0,maxR:70,life:40,maxLife:40});
+        addParticle(s.x,s.y,'#FF6F00',12);
+        bombs.splice(i,1);
+        if(s.hp<=0){
+          s.alive=false;shipsSunk++;gold+=150;
+          showMessage('🏴‍☠️ Ship sunk! +150 gold!');
+          updateScoreUI();
+        }
+        break;
+      }
+    }
+    if(i<bombs.length&&bombs[i]&&(bombs[i].life<=0||onWater(b.x,b.y)&&b.life<160)){
+      explosions.push({x:b.x,y:b.y,r:0,maxR:40,life:30,maxLife:30});
+      bombs.splice(i,1);
+    }
+  }
+  for(let i=explosions.length-1;i>=0;i--){
+    const e=explosions[i];
+    e.r=e.maxR*(1-e.life/e.maxLife);e.life--;
+    if(e.life<=0)explosions.splice(i,1);
+  }
+}
+
+// ── Particles ──────────────────────────────────────────────────────────────
+let particles=[];
+function addParticle(x,y,col,n){
+  for(let i=0;i<n;i++){
+    const ang=Math.random()*Math.PI*2,spd=1+Math.random()*4;
+    particles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,
+      life:30+Math.random()*30,maxLife:60,r:3+Math.random()*4,col});
+  }
+}
+function updateParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;p.life--;
+    if(p.life<=0)particles.splice(i,1);
+  }
+}
+
+// ── Pizza shop on water ────────────────────────────────────────────────────
+const PIZZA_FLOAT={x:420,y:1300};
+let torpedoes=[];
+
+function drawPizzaFloat(){
+  const [px,py]=w2s(PIZZA_FLOAT.x,PIZZA_FLOAT.y);
+  ctx.save();ctx.translate(px,py);
+  // Raft bob
+  const bob=Math.sin(waveT*0.04)*3;
+  ctx.translate(0,bob);
+  // Raft logs
+  ctx.fillStyle='#8D6E63';
+  for(let i=-2;i<=2;i++){ctx.fillRect(i*14-6,20,12,36);}
+  ctx.fillStyle='#A1887F';ctx.fillRect(-40,18,80,8);ctx.fillRect(-40,50,80,8);
+  // Pizza shop hut
+  ctx.fillStyle='#FFCC02';
+  ctx.fillRect(-38,-30,76,52);
+  ctx.strokeStyle='#FF6F00';ctx.lineWidth=3;ctx.strokeRect(-38,-30,76,52);
+  // Roof
+  ctx.fillStyle='#E53935';
+  ctx.beginPath();ctx.moveTo(-44,-30);ctx.lineTo(0,-65);ctx.lineTo(44,-30);ctx.closePath();ctx.fill();
+  // Sign
+  ctx.fillStyle='#fff';ctx.font='bold 11px Arial';ctx.textAlign='center';
+  ctx.fillText('🍕 PIZZA',0,-8);
+  ctx.fillText('BOAT',0,8);
+  // Window
+  ctx.fillStyle='#B3E5FC';ctx.fillRect(-15,-22,12,14);ctx.fillRect(3,-22,12,14);
+  // Pirate flag on mast
+  ctx.fillStyle='#5D4037';ctx.fillRect(-2,-65,4,30);
+  ctx.fillStyle='#FF1744';ctx.fillRect(-2,-65,20,12);
+  ctx.fillStyle='#fff';ctx.font='9px Arial';ctx.fillText('🍕',-2,-59);
+  ctx.restore();
+}
+
+// ── Plane definitions ──────────────────────────────────────────────────────
+// type, label, color, maxHp, maxSpeed, accel, turn, w, h
+const PDEFS=[
+  {type:'prop',   label:'🛩️ Prop Plane',  col:'#E3F2FD',trim:'#1565C0',  maxHp:100,maxSpeed:7,  accel:0.18,turn:0.08,w:52,h:38, isWater:false},
+  {type:'jet',    label:'✈️ Jet Plane',   col:'#78909C',trim:'#263238',  maxHp:80, maxSpeed:14, accel:0.38,turn:0.07,w:60,h:38, isWater:false},
+  {type:'banana', label:'🍌 Banana Plane',col:'#FFEB3B',trim:'#F57F17',  maxHp:90, maxSpeed:9,  accel:0.22,turn:0.09,w:58,h:32, isWater:false},
+  {type:'delta',  label:'△ Delta Wing',  col:'#37474F',trim:'#B0BEC5',  maxHp:70, maxSpeed:16, accel:0.45,turn:0.065,w:64,h:30, isWater:false},
+  {type:'boat',   label:'🚤 Speed Boat',  col:'#E53935',trim:'#FFEB3B',  maxHp:120,maxSpeed:6,  accel:0.16,turn:0.09,w:50,h:28, isWater:true},
+  {type:'sub',    label:'🤿 Submarine',   col:'#FDD835',trim:'#F57F17',  maxHp:150,maxSpeed:4,  accel:0.10,turn:0.07,w:64,h:26, isWater:true},
+  {type:'gasplane',label:'🔥 Gas Plane',  col:'#FF6F00',trim:'#FFCA28',  maxHp:110,maxSpeed:8,  accel:0.20,turn:0.085,w:56,h:42,isWater:false},
+];
+
+const PSTART={x:1700,y:1440};
+const WATER_START={x:600,y:1300};
+let planes=[];
+let activeP=0;
+let flk=0;
+
+function initPlanes(){
+  for(let i=0;i<PDEFS.length;i++){
+    const d=PDEFS[i];
+    const startX=d.isWater?WATER_START.x+i*30:PSTART.x+i*20;
+    const startY=d.isWater?WATER_START.y:PSTART.y;
+    planes.push({
+      ...d,
+      x:startX,y:startY,
+      vx:0,vy:0,angle:-Math.PI/2,
+      speed:0,hp:d.maxHp,
+      airborne:false,gearDown:true,
+      bombs:10,
+      dived:false,   // for submarine
+      diveTimer:0,
+    });
+  }
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────
+const keys={};
+window.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(e.key==='1')switchPlane(0);
+  else if(e.key==='2')switchPlane(1);
+  else if(e.key==='3')switchPlane(2);
+  else if(e.key==='4')switchPlane(3);
+  else if(e.key==='5')switchPlane(4);
+  else if(e.key==='6')switchPlane(5);
+  else if(e.key==='7')switchPlane(6);
+  else if(e.key==='8'){switchTrain(0);}
+  else if(e.key==='9'){switchTrain(1);}
+  else if(e.key===' '){
+    e.preventDefault();
+    const p=planes[activeP];
+    if(p.type==='sub'){toggleDive(p);}
+    else if(p.type==='boat'){fireTorpedo(p);}
+    else{dropBomb(p);}
+  }
+  else if(e.key==='r'||e.key==='R'){repairPlane();}
+});
+window.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+function switchPlane(i){
+  activeP=i;
+  activeTrain=-1; // leave train, camera follows plane again
+  updateVehicleUI();
+  showMessage(PDEFS[i].label+' selected!');
+}
+
+function toggleDive(p){
+  p.dived=!p.dived;
+  showMessage(p.dived?'🤿 DIVING! Invisible to pirates!':'🌊 Surfaced!');
+}
+
+function fireTorpedo(p){
+  torpedoes.push({x:p.x,y:p.y,vx:Math.cos(p.angle)*9,vy:Math.sin(p.angle)*9,life:120});
+  showMessage('💥 Torpedo away!');
+}
+
+function updateTorpedoes(){
+  for(let i=torpedoes.length-1;i>=0;i--){
+    const t=torpedoes[i];
+    t.x+=t.vx;t.y+=t.vy;t.life--;
+    for(const s of ships){
+      if(!s.alive)continue;
+      const dx=t.x-s.x,dy=t.y-s.y;
+      if(Math.sqrt(dx*dx+dy*dy)<35){
+        s.hp-=50;hits++;
+        explosions.push({x:s.x,y:s.y,r:0,maxR:80,life:45,maxLife:45});
+        addParticle(s.x,s.y,'#FF6F00',14);
+        torpedoes.splice(i,1);
+        if(s.hp<=0){s.alive=false;shipsSunk++;gold+=150;showMessage('💥 Ship sunk by torpedo! +150 gold!');updateScoreUI();}
+        break;
+      }
+    }
+    if(i<torpedoes.length&&torpedoes[i]&&torpedoes[i].life<=0)torpedoes.splice(i,1);
+  }
+}
+
+function drawTorpedoes(){
+  for(const t of torpedoes){
+    const [tx,ty]=w2s(t.x,t.y);
+    ctx.save();ctx.translate(tx,ty);ctx.rotate(Math.atan2(t.vy,t.vx));
+    ctx.fillStyle='#90A4AE';
+    ctx.beginPath();ctx.ellipse(0,0,14,5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#FF5722';
+    ctx.beginPath();ctx.ellipse(-10,0,5,3,0,0,Math.PI*2);ctx.fill();
+    // wake bubbles
+    ctx.fillStyle='rgba(255,255,255,0.5)';
+    for(let b=0;b<3;b++){ctx.beginPath();ctx.arc(-14-b*6,(Math.random()-0.5)*8,2,0,Math.PI*2);ctx.fill();}
+    ctx.restore();
+  }
+}
+
+function repairPlane(){
+  const p=planes[activeP];
+  if(!p.airborne&&isNearAirport(p)){
+    p.hp=p.maxHp;
+    showMessage('✅ Repaired at airport!');
+    updateVehicleUI();
+  } else {
+    showMessage('🛬 Land at airport to repair!');
+  }
+}
+
+function isNearAirport(p){
+  return Math.abs(p.x-AIRPORT.x)<200&&Math.abs(p.y-AIRPORT.y)<120;
+}
+
+// ── Plane update ───────────────────────────────────────────────────────────
+function updatePlane(){
+  if(activeTrain>=0)return; // train has control
+  const p=planes[activeP];
+  const up=keys['ArrowUp']||keys['w']||keys['W'];
+  const dn=keys['ArrowDown']||keys['s']||keys['S'];
+  const lt=keys['ArrowLeft']||keys['a']||keys['A'];
+  const rt=keys['ArrowRight']||keys['d']||keys['D'];
+
+  // ── Water vehicles (boat + sub) ──────────────────────
+  if(p.isWater){
+    if(up){p.speed=Math.min(p.maxSpeed,p.speed+p.accel);}
+    else{p.speed=Math.max(0,p.speed-0.05);}
+    if(dn){p.speed=Math.max(0,p.speed-0.1);}
+    if(lt){p.angle-=p.turn*(p.speed/p.maxSpeed*0.5+0.5);}
+    if(rt){p.angle+=p.turn*(p.speed/p.maxSpeed*0.5+0.5);}
+    const nx=p.x+Math.cos(p.angle)*p.speed;
+    const ny=p.y+Math.sin(p.angle)*p.speed;
+    // Only move on water
+    if(onWater(nx,ny)){p.x=nx;p.y=ny;}
+    else{p.speed=0;}
+    p.x=Math.max(0,Math.min(W.w,p.x));
+    p.y=Math.max(0,Math.min(W.h,p.y));
+    // Cannonball damage (sub immune when dived)
+    // (handled in updateShips - sub.dived skip)
+
+    // Pizza shop healing if nearby
+    const pdx=p.x-PIZZA_FLOAT.x, pdy=p.y-PIZZA_FLOAT.y;
+    if(Math.sqrt(pdx*pdx+pdy*pdy)<80&&p.hp<p.maxHp){
+      p.hp=Math.min(p.maxHp,p.hp+0.2);
+      if(Math.floor(p.hp)%30===0)showMessage('🍕 Pizza heals you! Yum!');
+    }
+
+    const icon=p.type==='sub'?(p.dived?'🤿 Diving':'🌊 Surface'):' 🌊';
+    document.getElementById('plane-speed').textContent='Speed: '+p.speed.toFixed(1)+icon;
+    // Camera follow
+    cam.x=p.x-canvas.width/2;cam.y=p.y-canvas.height/2;
+    cam.x=Math.max(0,Math.min(W.w-canvas.width,cam.x));
+    cam.y=Math.max(0,Math.min(W.h-canvas.height,cam.y));
+    updateVehicleUI();
+    return;
+  }
+
+  // ── Air vehicles ─────────────────────────────────────
+  if(up){p.speed=Math.min(p.maxSpeed,p.speed+p.accel);}
+  else{p.speed=Math.max(0,p.speed-0.04);}
+  if(dn){p.speed=Math.max(0,p.speed-0.08);}
+  if(lt){p.angle-=p.turn*(p.speed/p.maxSpeed*0.6+0.4);}
+  if(rt){p.angle+=p.turn*(p.speed/p.maxSpeed*0.6+0.4);}
+
+  // Takeoff / landing
+  if(p.speed>4.5&&!p.airborne){
+    p.airborne=true;
+    showMessage('🛫 Takeoff! Gear UP!');
+    p.gearDown=false;
+  }
+  if(p.speed<2&&p.airborne&&pointInIsland(p.x,p.y)){
+    p.airborne=false;p.gearDown=true;
+    showMessage('🛬 Landed!');
+    p.speed=0;
+  }
+  if(p.speed>5&&p.gearDown&&p.airborne){p.gearDown=false;}
+  if(p.speed<2.5&&!p.gearDown&&!p.airborne){p.gearDown=true;}
+
+  p.vx=Math.cos(p.angle)*p.speed;
+  p.vy=Math.sin(p.angle)*p.speed;
+  const nx=p.x+p.vx, ny=p.y+p.vy;
+
+  if(p.airborne){
+    p.x=nx;p.y=ny;
+  } else {
+    if(pointInIsland(nx,ny)){p.x=nx;p.y=ny;}
+    else{p.speed=0;}
+  }
+
+  p.x=Math.max(0,Math.min(W.w,p.x));
+  p.y=Math.max(0,Math.min(W.h,p.y));
+
+  // Camera follow
+  cam.x=p.x-canvas.width/2;
+  cam.y=p.y-canvas.height/2;
+  cam.x=Math.max(0,Math.min(W.w-canvas.width,cam.x));
+  cam.y=Math.max(0,Math.min(W.h-canvas.height,cam.y));
+
+  // Lava damage
+  for(const lr of lavaRocks){
+    const dx=lr.x-p.x,dy=lr.y-p.y;
+    if(Math.sqrt(dx*dx+dy*dy)<20&&p.airborne){
+      p.hp=Math.max(0,p.hp-5);
+      showMessage('🌋 Lava rock hit!');
+    }
+  }
+
+  // Airport auto-repair slow zone
+  if(!p.airborne&&isNearAirport(p)&&p.hp<p.maxHp){
+    p.hp=Math.min(p.maxHp,p.hp+0.3);
+  }
+
+  document.getElementById('plane-speed').textContent='Speed: '+p.speed.toFixed(1)+(p.airborne?' ✈️':' 🛞');
+  updateVehicleUI();
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function updateVehicleUI(){
+  const p=planes[activeP];
+  document.getElementById('vehicle-name').textContent=p.label;
+  document.getElementById('hp-bar').style.width=Math.max(0,p.hp/p.maxHp*100)+'%';
+  document.getElementById('hp-bar').style.background=p.hp>50?'linear-gradient(90deg,#4CAF50,#8BC34A)':p.hp>25?'linear-gradient(90deg,#FF9800,#FFC107)':'linear-gradient(90deg,#F44336,#FF5722)';
+  document.getElementById('gold-display').textContent='💰 Gold: '+gold;
+}
+function updateScoreUI(){
+  document.getElementById('score-panel').innerHTML='🏴‍☠️ Ships sunk: '+shipsSunk+'<br>🎯 Hits: '+hits;
+}
+
+let msgTimer=0;
+function showMessage(txt){
+  const el=document.getElementById('msg');
+  el.textContent=txt;el.style.display='block';msgTimer=180;
+}
+function updateMsg(){
+  if(msgTimer>0){msgTimer--;if(msgTimer===0)document.getElementById('msg').style.display='none';}
+}
+
+// ── Wave animation ─────────────────────────────────────────────────────────
+let waveT=0;
+
+// ── Draw functions ─────────────────────────────────────────────────────────
+function drawOcean(){
+  // Deep ocean gradient
+  const grd=ctx.createLinearGradient(0,0,0,canvas.height);
+  grd.addColorStop(0,'#0D47A1');
+  grd.addColorStop(0.5,'#1565C0');
+  grd.addColorStop(1,'#0A3374');
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Wave shimmer lines
+  ctx.strokeStyle='rgba(255,255,255,0.07)';
+  ctx.lineWidth=2;
+  for(let row=0;row<canvas.height;row+=50){
+    ctx.beginPath();
+    for(let x=0;x<canvas.width;x+=4){
+      const wx=x+cam.x;
+      const wy=row+cam.y;
+      const wave=Math.sin(wx*0.03+waveT*0.04)*6+Math.sin(wy*0.02-waveT*0.03)*4;
+      if(x===0)ctx.moveTo(x,row+wave);
+      else ctx.lineTo(x,row+wave);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawSmallIslands(){
+  for(const si of SMALL_ISLANDS){
+    const [sx,sy]=w2s(si.cx,si.cy);
+    // Water ring / beach
+    ctx.save();
+    ctx.translate(sx,sy);
+    // Sand beach
+    ctx.fillStyle='#F5DEB3';
+    ctx.beginPath();ctx.ellipse(0,0,si.rx+15,si.ry+12,0,0,Math.PI*2);ctx.fill();
+    // Grass
+    ctx.fillStyle='#388E3C';
+    ctx.beginPath();ctx.ellipse(0,0,si.rx-10,si.ry-8,0,0,Math.PI*2);ctx.fill();
+    // Palm tree
+    ctx.fillStyle='#5D4037';
+    ctx.fillRect(-4,-50,8,50);
+    ctx.fillStyle='#4CAF50';
+    for(let a=0;a<5;a++){
+      const ang=a*Math.PI*2/5+waveT*0.02;
+      ctx.save();ctx.translate(0,-50);ctx.rotate(ang);
+      ctx.beginPath();ctx.ellipse(20,-8,25,8,0,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+}
+
+function drawMainIsland(){
+  // Beach ring (slightly enlarged polygon)
+  ctx.beginPath();
+  for(let i=0;i<ISLAND_POLY.length;i++){
+    const [sx,sy]=w2s(ISLAND_POLY[i][0],ISLAND_POLY[i][1]);
+    if(i===0)ctx.moveTo(sx,sy); else ctx.lineTo(sx,sy);
+  }
+  ctx.closePath();
+  ctx.fillStyle='#F5DEB3';
+  ctx.fill();
+
+  // Shrink for grass (offset inward ~25px)
+  ctx.save();
+  const [icx,icy]=w2s(ISLAND_CENTER.x,ISLAND_CENTER.y);
+  ctx.translate(icx,icy);
+  ctx.scale(0.88,0.88);
+  ctx.translate(-icx,-icy);
+  ctx.beginPath();
+  for(let i=0;i<ISLAND_POLY.length;i++){
+    const [sx,sy]=w2s(ISLAND_POLY[i][0],ISLAND_POLY[i][1]);
+    if(i===0)ctx.moveTo(sx,sy); else ctx.lineTo(sx,sy);
+  }
+  ctx.closePath();
+  ctx.fillStyle='#2E7D32';
+  ctx.fill();
+  ctx.restore();
+
+  // Jungle interior darker green blobs
+  ctx.fillStyle='rgba(27,94,32,0.6)';
+  for(let i=0;i<8;i++){
+    const bx=ISLAND_CENTER.x+(Math.cos(i*0.9)*180);
+    const by=ISLAND_CENTER.y+(Math.sin(i*1.3)*140);
+    const [sx,sy]=w2s(bx,by);
+    ctx.beginPath();ctx.arc(sx,sy,45+Math.sin(i)*15,0,Math.PI*2);ctx.fill();
+  }
+
+  // Dirt paths / roads on island
+  ctx.strokeStyle='#8D6E63';ctx.lineWidth=12;ctx.setLineDash([]);
+  ctx.beginPath();
+  const [ax,ay]=w2s(1700,1470);
+  const [bx2,by2]=w2s(2050,1200);
+  ctx.moveTo(ax,ay);ctx.lineTo(bx2,by2);ctx.stroke();
+  ctx.beginPath();
+  const [cx2,cy2]=w2s(2050,1200);
+  const [dx,dy]=w2s(2350,950);
+  ctx.moveTo(cx2,cy2);ctx.lineTo(dx,dy);ctx.stroke();
+}
+
+function drawVolcano(){
+  const [vx,vy]=w2s(VOLCANO.x,VOLCANO.y);
+  // Volcano base
+  ctx.beginPath();
+  ctx.moveTo(vx-VOLCANO.r*1.6,vy+30);
+  ctx.lineTo(vx,vy-VOLCANO.r*1.2);
+  ctx.lineTo(vx+VOLCANO.r*1.6,vy+30);
+  ctx.closePath();
+  ctx.fillStyle='#37474F';ctx.fill();
+  ctx.strokeStyle='#263238';ctx.lineWidth=3;ctx.stroke();
+
+  // Lava glow in crater
+  const lavaAlpha=erupting?0.9:0.5+Math.sin(waveT*0.1)*0.2;
+  const lgrd=ctx.createRadialGradient(vx,vy-VOLCANO.r*0.9,5,vx,vy-VOLCANO.r*0.9,35);
+  lgrd.addColorStop(0,`rgba(255,200,0,${lavaAlpha})`);
+  lgrd.addColorStop(0.5,`rgba(255,80,0,${lavaAlpha*0.8})`);
+  lgrd.addColorStop(1,'rgba(255,0,0,0)');
+  ctx.fillStyle=lgrd;
+  ctx.beginPath();ctx.arc(vx,vy-VOLCANO.r*0.9,35,0,Math.PI*2);ctx.fill();
+
+  // Rocky top rim
+  ctx.fillStyle='#546E7A';
+  ctx.beginPath();
+  ctx.ellipse(vx,vy-VOLCANO.r*0.9,30,12,0,0,Math.PI*2);ctx.fill();
+
+  // Smoke
+  for(const s of smokeParticles){
+    const [sx,sy]=w2s(s.x,s.y);
+    const t=s.life/s.maxLife;
+    ctx.globalAlpha=s.alpha*t;
+    ctx.fillStyle=`rgb(${80+Math.floor(t*80)},${80+Math.floor(t*80)},${80+Math.floor(t*80)})`;
+    ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+
+  // Lava rocks
+  for(const lr of lavaRocks){
+    const [lx,ly]=w2s(lr.x,lr.y);
+    const t=lr.life/lr.maxLife;
+    const col=t>0.5?'#FF6F00':'#D32F2F';
+    ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(lx,ly,lr.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,200,0,0.5)';
+    ctx.beginPath();ctx.arc(lx-lr.r*0.3,ly-lr.r*0.3,lr.r*0.4,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawRunway(){
+  const [rx,ry]=w2s(RWY.x,RWY.y);
+  ctx.save();ctx.translate(rx,ry);ctx.rotate(RWY.rot);
+  // Tarmac
+  ctx.fillStyle='#37474F';
+  ctx.fillRect(-RWY.w/2,-RWY.len/2,RWY.w+20,RWY.len);
+  // Centerline
+  ctx.strokeStyle='#FFEB3B';ctx.lineWidth=3;ctx.setLineDash([20,14]);
+  ctx.beginPath();ctx.moveTo(0,-RWY.len/2+20);ctx.lineTo(0,RWY.len/2-20);ctx.stroke();
+  ctx.setLineDash([]);
+  // Threshold bars
+  ctx.fillStyle='#fff';
+  for(let i=0;i<6;i++){
+    ctx.fillRect(-RWY.w/2+5+i*13,-RWY.len/2+8,10,35);
+    ctx.fillRect(-RWY.w/2+5+i*13,RWY.len/2-43,10,35);
+  }
+  // Numbers
+  ctx.fillStyle='#fff';ctx.font='bold 16px Arial';ctx.textAlign='center';
+  ctx.fillText('09',-20,-RWY.len/2+55);
+  ctx.fillText('27',-20,RWY.len/2-35);
+  ctx.restore();
+}
+
+function drawAirport(){
+  const [ax,ay]=w2s(AIRPORT.x,AIRPORT.y);
+  // Terminal building
+  ctx.fillStyle='#B0BEC5';
+  ctx.fillRect(ax-AIRPORT.w/2,ay-AIRPORT.h/2,AIRPORT.w,AIRPORT.h);
+  ctx.strokeStyle='#546E7A';ctx.lineWidth=3;ctx.strokeRect(ax-AIRPORT.w/2,ay-AIRPORT.h/2,AIRPORT.w,AIRPORT.h);
+  // Roof
+  ctx.fillStyle='#78909C';
+  ctx.fillRect(ax-AIRPORT.w/2,ay-AIRPORT.h/2,AIRPORT.w,20);
+  // Sign
+  ctx.fillStyle='#1A237E';
+  ctx.fillRect(ax-60,ay-AIRPORT.h/2-28,120,24);
+  ctx.fillStyle='#fff';ctx.font='bold 13px Arial';ctx.textAlign='center';
+  ctx.fillText('✈ AIRPORT',ax,ay-AIRPORT.h/2-10);
+  // Control tower
+  ctx.fillStyle='#90A4AE';
+  ctx.fillRect(ax+AIRPORT.w/2-28,ay-AIRPORT.h/2-60,22,65);
+  ctx.fillStyle='#4DB6AC';
+  ctx.fillRect(ax+AIRPORT.w/2-34,ay-AIRPORT.h/2-68,34,18);
+  // Radar
+  const radarAng=waveT*0.04;
+  const [rdrx,rdry]=[ax+AIRPORT.w/2-17,ay-AIRPORT.h/2-62];
+  ctx.strokeStyle='#00E5FF';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(rdrx,rdry);
+  ctx.lineTo(rdrx+Math.cos(radarAng)*22,rdry+Math.sin(radarAng)*22);
+  ctx.stroke();
+  // Windows
+  ctx.fillStyle='#B3E5FC';
+  for(let i=0;i<4;i++){
+    ctx.fillRect(ax-AIRPORT.w/2+15+i*40,ay-20,24,22);
+  }
+  // Repair zone marker
+  ctx.strokeStyle='#4CAF50';ctx.lineWidth=2;ctx.setLineDash([8,5]);
+  ctx.strokeRect(ax-AIRPORT.w/2-10,ay-AIRPORT.h/2-10,AIRPORT.w+20,AIRPORT.h+20);
+  ctx.setLineDash([]);
+  ctx.fillStyle='#4CAF50';ctx.font='11px Arial';ctx.textAlign='center';
+  ctx.fillText('REPAIR ZONE',ax,ay+AIRPORT.h/2+15);
+}
+
+function drawShips(){
+  for(const s of ships){
+    const [sx,sy]=w2s(s.x,s.y);
+    if(!s.alive){
+      if(s.sinkAnim<60){
+        ctx.globalAlpha=1-s.sinkAnim/60;
+        drawShipAt(sx,sy+s.sinkAnim*0.5,s.angle,s.color,s);
+        ctx.globalAlpha=1;
+        // Bubbles
+        for(let b=0;b<3;b++){
+          ctx.fillStyle='rgba(100,180,255,0.5)';
+          ctx.beginPath();
+          ctx.arc(sx+(Math.random()-0.5)*40,sy+(Math.random()-0.5)*30,4+Math.random()*6,0,Math.PI*2);
+          ctx.fill();
+        }
+      }
+      continue;
+    }
+    drawShipAt(sx,sy,s.angle,s.color,s);
+    // HP bar
+    const bw=60;
+    ctx.fillStyle='#333';ctx.fillRect(sx-bw/2,sy-45,bw,7);
+    ctx.fillStyle=s.hp>50?'#4CAF50':'#F44336';
+    ctx.fillRect(sx-bw/2,sy-45,bw*s.hp/s.maxHp,7);
+    // Cannonballs
+    for(const cb of s.cannonballs){
+      const [cbx,cby]=w2s(cb.x,cb.y);
+      ctx.fillStyle='#212121';
+      ctx.beginPath();ctx.arc(cbx,cby,5,0,Math.PI*2);ctx.fill();
+    }
+  }
+}
+
+function drawShipAt(sx,sy,ang,col,s){
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(ang+Math.PI/2);
+  // Hull
+  ctx.fillStyle=col;
+  ctx.beginPath();
+  ctx.moveTo(0,-38);ctx.lineTo(22,10);ctx.lineTo(18,28);
+  ctx.lineTo(-18,28);ctx.lineTo(-22,10);ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle='#3E2723';ctx.lineWidth=2;ctx.stroke();
+  // Deck
+  ctx.fillStyle='#8D6E63';
+  ctx.fillRect(-14,-10,28,32);
+  // Mast
+  ctx.fillStyle='#5D4037';
+  ctx.fillRect(-2.5,-38,5,62);
+  // Sail
+  ctx.fillStyle='rgba(245,245,220,0.9)';
+  ctx.beginPath();ctx.moveTo(0,-35);ctx.lineTo(22,-5);ctx.lineTo(0,10);ctx.closePath();ctx.fill();
+  // Skull flag
+  ctx.fillStyle='#212121';
+  ctx.fillRect(-1,-55,14,10);
+  ctx.fillStyle='#fff';ctx.font='bold 10px Arial';ctx.textAlign='center';
+  ctx.fillText('☠',6,-47);
+  // Cannon portholes
+  ctx.fillStyle='#212121';
+  ctx.beginPath();ctx.arc(-18,5,5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(18,5,5,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
+function drawBombs(){
+  for(const b of bombs){
+    const [bx,by]=w2s(b.x,b.y);
+    ctx.fillStyle='#212121';
+    ctx.beginPath();ctx.ellipse(bx,by,b.r*0.7,b.r,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#FF5722';
+    ctx.beginPath();ctx.arc(bx,by-b.r+2,3,0,Math.PI*2);ctx.fill();
+  }
+  for(const e of explosions){
+    const [ex,ey]=w2s(e.x,e.y);
+    const t=e.life/e.maxLife;
+    const grd=ctx.createRadialGradient(ex,ey,0,ex,ey,e.r);
+    grd.addColorStop(0,`rgba(255,220,50,${t})`);
+    grd.addColorStop(0.5,`rgba(255,100,0,${t*0.8})`);
+    grd.addColorStop(1,'rgba(255,0,0,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(ex,ey,e.r,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    const [px,py]=w2s(p.x,p.y);
+    const t=p.life/p.maxLife;
+    ctx.globalAlpha=t;
+    ctx.fillStyle=p.col;
+    ctx.beginPath();ctx.arc(px,py,p.r*t,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawBoat(p,active){
+  const [px,py]=w2s(p.x,p.y);
+  const bob=Math.sin(waveT*0.05+p.x*0.01)*2;
+  ctx.save();ctx.translate(px,py+bob);ctx.rotate(p.angle+Math.PI/2);
+  const spd=p.speed/p.maxSpeed;
+  // Wake trails
+  if(spd>0.1){
+    ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-8,18);ctx.lineTo(-22,50*spd+18);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(8,18);ctx.lineTo(22,50*spd+18);ctx.stroke();
+  }
+  // Hull
+  ctx.fillStyle=p.col;
+  ctx.beginPath();ctx.moveTo(0,-p.h/2);ctx.lineTo(p.w/2,p.h/4);ctx.lineTo(p.w/3,p.h/2);ctx.lineTo(-p.w/3,p.h/2);ctx.lineTo(-p.w/2,p.h/4);ctx.closePath();
+  ctx.fill();ctx.strokeStyle=p.trim;ctx.lineWidth=2;ctx.stroke();
+  // Deck stripe
+  ctx.fillStyle=p.trim;ctx.fillRect(-p.w/3,-p.h/5,p.w*2/3,p.h*0.55);
+  // Windshield
+  ctx.fillStyle='#B3E5FC';ctx.beginPath();ctx.ellipse(0,-p.h/6,10,8,0,0,Math.PI*2);ctx.fill();
+  // Engine exhaust bubbles
+  if(spd>0.3){
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    for(let i=0;i<3;i++){ctx.beginPath();ctx.arc((Math.random()-0.5)*10,p.h/2+4+i*5,2+Math.random()*2,0,Math.PI*2);ctx.fill();}
+  }
+  // Active ring
+  if(active){
+    const pulse=0.6+Math.sin(Date.now()*0.006)*0.4;
+    ctx.strokeStyle=`rgba(255,255,0,${pulse})`;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(0,0,p.w*0.65,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=`rgba(255,255,0,${pulse})`;ctx.font='bold 13px Arial';ctx.textAlign='center';
+    ctx.fillText('▼ YOU',0,-p.w-8);
+  }
+  ctx.restore();
+}
+
+function drawSub(p,active){
+  const [px,py]=w2s(p.x,p.y);
+  const bob=Math.sin(waveT*0.03+p.x*0.01)*1.5;
+  ctx.save();
+  if(p.dived){ctx.globalAlpha=0.45;}
+  ctx.translate(px,py+bob);ctx.rotate(p.angle+Math.PI/2);
+  const spd=p.speed/p.maxSpeed;
+  // Prop bubbles behind
+  if(spd>0.1){
+    ctx.fillStyle='rgba(100,200,255,0.5)';
+    for(let i=0;i<5;i++){ctx.beginPath();ctx.arc((Math.random()-0.5)*8,p.h/2+4+i*7,2+Math.random()*3,0,Math.PI*2);ctx.fill();}
+  }
+  // Sub body
+  ctx.fillStyle=p.col;
+  ctx.beginPath();ctx.ellipse(0,0,p.w/2,p.h/2,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=p.trim;ctx.lineWidth=2.5;ctx.stroke();
+  // Conning tower
+  ctx.fillStyle='#F9A825';
+  ctx.fillRect(-7,-p.h/2-14,14,16);ctx.fillRect(-10,-p.h/2-16,20,6);
+  // Periscope
+  ctx.strokeStyle='#E65100';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(4,-p.h/2-14);ctx.lineTo(4,-p.h/2-30);ctx.lineTo(14,-p.h/2-30);ctx.stroke();
+  // Porthole windows
+  ctx.fillStyle='#B3E5FC';ctx.beginPath();ctx.arc(-14,2,7,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#B3E5FC';ctx.beginPath();ctx.arc(8,2,7,0,Math.PI*2);ctx.fill();
+  // Propeller
+  const propAng=Date.now()*0.015;
+  ctx.save();ctx.translate(0,p.h/2);
+  ctx.strokeStyle='#E65100';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(Math.cos(propAng)*14,Math.sin(propAng)*14);ctx.lineTo(Math.cos(propAng+Math.PI)*14,Math.sin(propAng+Math.PI)*14);ctx.stroke();
+  ctx.restore();
+  // Dive indicator
+  if(p.dived){
+    ctx.fillStyle='rgba(0,220,255,0.8)';ctx.font='bold 11px Arial';ctx.textAlign='center';
+    ctx.fillText('DIVING',0,p.h/2+20);
+  }
+  // Active ring
+  if(active){
+    const pulse=0.6+Math.sin(Date.now()*0.006)*0.4;
+    ctx.strokeStyle=`rgba(255,255,0,${pulse})`;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(0,0,p.w*0.65,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=`rgba(255,255,0,${pulse})`;ctx.font='bold 13px Arial';ctx.textAlign='center';
+    ctx.fillText('▼ YOU',0,-p.w-8);
+  }
+  ctx.restore();
+  ctx.globalAlpha=1;
+}
+
+function drawGasPlane(p,active){
+  const [px,py]=w2s(p.x,p.y);
+  ctx.save();ctx.translate(px,py);ctx.rotate(p.angle+Math.PI/2);
+  const spd=p.speed/p.maxSpeed;
+
+  // Big choo-choo smoke puffs from engine
+  if(spd>0.1&&Math.random()<0.25){
+    smokeParticles.push({
+      x:p.x+Math.cos(p.angle+Math.PI)*20,
+      y:p.y+Math.sin(p.angle+Math.PI)*20,
+      vx:(Math.random()-0.5)*1.2,vy:(Math.random()-0.5)*1.2-0.5,
+      life:50+Math.random()*30,maxLife:70,r:10+Math.random()*8,alpha:0.55
+    });
+  }
+
+  // Gas flame engine exhaust
+  if(spd>0.08){
+    const fl=spd*32*flk;
+    const eg=ctx.createLinearGradient(0,p.h/3,0,p.h/3+fl);
+    eg.addColorStop(0,'rgba(255,255,100,0.95)');
+    eg.addColorStop(0.3,'rgba(255,160,0,0.85)');
+    eg.addColorStop(0.7,'rgba(255,60,0,0.6)');
+    eg.addColorStop(1,'rgba(200,0,0,0)');
+    ctx.fillStyle=eg;
+    ctx.beginPath();ctx.ellipse(0,p.h/3+fl/2,11*flk,fl/2,0,0,Math.PI*2);ctx.fill();
+  }
+
+  // Biplane lower wing
+  ctx.fillStyle='#E65100';
+  ctx.beginPath();ctx.moveTo(-p.w/2+6,p.h/8);ctx.lineTo(p.w/2-6,p.h/8);ctx.lineTo(p.w/3,p.h/4);ctx.lineTo(-p.w/3,p.h/4);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#BF360C';ctx.lineWidth=1.5;ctx.stroke();
+
+  // Fuselage
+  ctx.fillStyle=p.col;
+  ctx.beginPath();ctx.moveTo(0,-p.h/2);ctx.lineTo(p.w*0.22,p.h/3);ctx.lineTo(0,p.h/2);ctx.lineTo(-p.w*0.22,p.h/3);ctx.closePath();
+  ctx.fill();ctx.strokeStyle=p.trim;ctx.lineWidth=2;ctx.stroke();
+
+  // Biplane upper wing
+  ctx.fillStyle='#FF8F00';
+  ctx.beginPath();ctx.moveTo(-p.w/2,-p.h/5);ctx.lineTo(p.w/2,-p.h/5);ctx.lineTo(p.w/3,-p.h/12);ctx.lineTo(-p.w/3,-p.h/12);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#E65100';ctx.lineWidth=1.5;ctx.stroke();
+
+  // Wing struts
+  ctx.strokeStyle='#FFCA28';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(-p.w/3,-p.h/5);ctx.lineTo(-p.w/3+4,p.h/8);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(p.w/3,-p.h/5);ctx.lineTo(p.w/3-4,p.h/8);ctx.stroke();
+
+  // Tail
+  ctx.fillStyle='#FF8F00';
+  ctx.beginPath();ctx.moveTo(-p.w/4,p.h/4);ctx.lineTo(p.w/4,p.h/4);ctx.lineTo(p.w/5,p.h/2);ctx.lineTo(-p.w/5,p.h/2);ctx.closePath();ctx.fill();
+
+  // Spinning propeller
+  const propAng=Date.now()*0.03;
+  ctx.save();ctx.translate(0,-p.h/2+2);
+  ctx.strokeStyle='#FFCA28';ctx.lineWidth=5;
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(propAng)*24,Math.sin(propAng)*24);
+  ctx.lineTo(Math.cos(propAng+Math.PI)*24,Math.sin(propAng+Math.PI)*24);
+  ctx.stroke();
+  ctx.strokeStyle='#FF8F00';ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(propAng+Math.PI/2)*24,Math.sin(propAng+Math.PI/2)*24);
+  ctx.lineTo(Math.cos(propAng-Math.PI/2)*24,Math.sin(propAng-Math.PI/2)*24);
+  ctx.stroke();
+  ctx.fillStyle='#E65100';ctx.beginPath();ctx.arc(0,0,5,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+
+  // Gas tank on side
+  ctx.fillStyle='#FF6F00';ctx.beginPath();ctx.ellipse(-p.w/2+4,0,6,14,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#FFCA28';ctx.font='7px Arial';ctx.textAlign='center';ctx.fillText('GAS',-p.w/2+4,3);
+
+  // Cockpit
+  ctx.fillStyle='#B3E5FC';ctx.beginPath();ctx.ellipse(0,-p.h/6,9,13,0,0,Math.PI*2);ctx.fill();
+
+  // Active ring + YOU label
+  if(active){
+    const pulse=0.6+Math.sin(Date.now()*0.006)*0.4;
+    ctx.strokeStyle=`rgba(255,255,0,${pulse})`;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(0,0,p.w*0.7,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=`rgba(255,255,0,${pulse})`;ctx.font='bold 13px Arial';ctx.textAlign='center';
+    ctx.fillText('▼ YOU',0,-p.w-8);
+  }
+  ctx.restore();
+}
+
+function drawPlane(p,active){
+  // Route water vehicles to their own draw functions
+  if(p.type==='boat'){drawBoat(p,active);return;}
+  if(p.type==='sub'){drawSub(p,active);return;}
+  if(p.type==='gasplane'){drawGasPlane(p,active);return;}
+
+  const [px,py]=w2s(p.x,p.y);
+  ctx.save();ctx.translate(px,py);ctx.rotate(p.angle+Math.PI/2);
+
+  const spd=p.speed/p.maxSpeed;
+  flk=Math.sin(Date.now()*0.05)*0.15+0.85;
+
+  if(p.type==='prop'){
+    drawPropPlane(p,spd,active);
+  } else if(p.type==='jet'){
+    drawJetPlane(p,spd,active);
+  } else if(p.type==='banana'){
+    drawBananaPlane(p,spd,active);
+  } else if(p.type==='delta'){
+    drawDeltaPlane(p,spd,active);
+  }
+
+  // Landing gear
+  if(p.gearDown){
+    ctx.fillStyle='#555';
+    if(p.type==='delta'){
+      ctx.fillRect(-20,8,8,12);ctx.fillRect(12,8,8,12);
+      ctx.fillRect(-6,-12,12,10);
+    } else {
+      ctx.fillRect(-p.w/2+8,p.h/4,10,14);
+      ctx.fillRect(p.w/2-18,p.h/4,10,14);
+      ctx.fillRect(-6,-p.h/3,12,10);
+      // Wheels
+      ctx.fillStyle='#222';
+      ctx.beginPath();ctx.ellipse(-p.w/2+13,p.h/4+14,7,5,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.ellipse(p.w/2-13,p.h/4+14,7,5,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.ellipse(0,-p.h/3+10,6,4,0,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // Active indicator - bright pulsing ring + YOU ARE HERE arrow
+  if(active){
+    const pulse=0.6+Math.sin(Date.now()*0.006)*0.4;
+    ctx.strokeStyle=`rgba(255,255,0,${pulse})`;ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(0,0,p.w*0.75,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle=`rgba(0,255,200,${pulse*0.6})`;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(0,0,p.w*0.9,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+    // "YOU" label above
+    ctx.fillStyle=`rgba(255,255,0,${pulse})`;
+    ctx.font='bold 13px Arial';ctx.textAlign='center';
+    ctx.fillText('▼ YOU',-0,-p.w-8);
+  }
+
+  ctx.restore();
+}
+
+function drawPropPlane(p,spd,active){
+  // Engine thrust
+  if(spd>0.1){
+    const fl=spd*28*flk;
+    const eg=ctx.createLinearGradient(0,p.h/3,0,p.h/3+fl);
+    eg.addColorStop(0,'rgba(255,255,255,0.9)');
+    eg.addColorStop(0.4,'rgba(100,160,255,0.7)');
+    eg.addColorStop(1,'rgba(50,80,200,0)');
+    ctx.fillStyle=eg;
+    ctx.beginPath();ctx.ellipse(0,p.h/3+fl/2,8*flk,fl/2,0,0,Math.PI*2);ctx.fill();
+  }
+  // Fuselage
+  ctx.fillStyle=p.col;
+  ctx.beginPath();
+  ctx.moveTo(0,-p.h/2);ctx.lineTo(p.w/3,p.h/4);ctx.lineTo(0,p.h/2);ctx.lineTo(-p.w/3,p.h/4);ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle=p.trim;ctx.lineWidth=2;ctx.stroke();
+  // Wings
+  ctx.fillStyle=p.trim;
+  ctx.beginPath();ctx.moveTo(-p.w/2,0);ctx.lineTo(p.w/2,0);ctx.lineTo(p.w/3,p.h/5);ctx.lineTo(-p.w/3,p.h/5);ctx.closePath();ctx.fill();
+  // Tail
+  ctx.beginPath();ctx.moveTo(-p.w/4,p.h/4);ctx.lineTo(p.w/4,p.h/4);ctx.lineTo(p.w/6,p.h/2);ctx.lineTo(-p.w/6,p.h/2);ctx.closePath();ctx.fill();
+  // Propeller
+  const propAng=Date.now()*0.02;
+  ctx.save();ctx.translate(0,-p.h/2+2);
+  ctx.strokeStyle='#90A4AE';ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(propAng)*22,Math.sin(propAng)*22);
+  ctx.lineTo(Math.cos(propAng+Math.PI)*22,Math.sin(propAng+Math.PI)*22);
+  ctx.stroke();
+  ctx.fillStyle='#78909C';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  // Cockpit
+  ctx.fillStyle='#B3E5FC';
+  ctx.beginPath();ctx.ellipse(0,-p.h/6,9,14,0,0,Math.PI*2);ctx.fill();
+}
+
+function drawJetPlane(p,spd,active){
+  // Twin engine thrust
+  if(spd>0.05){
+    for(const ex of[-12,12]){
+      const fl=spd*36*flk;
+      const eg=ctx.createLinearGradient(ex,p.h/3,ex,p.h/3+fl);
+      eg.addColorStop(0,'rgba(255,255,255,0.95)');
+      eg.addColorStop(0.3,'rgba(150,200,255,0.8)');
+      eg.addColorStop(0.7,'rgba(255,120,0,0.6)');
+      eg.addColorStop(1,'rgba(200,0,0,0)');
+      ctx.fillStyle=eg;
+      ctx.beginPath();ctx.ellipse(ex,p.h/3+fl/2,7*flk,fl/2,0,0,Math.PI*2);ctx.fill();
+    }
+    if(spd>0.7){// Afterburner ring
+      ctx.strokeStyle=`rgba(0,200,255,${(spd-0.7)*0.8})`;ctx.lineWidth=3;
+      ctx.beginPath();ctx.ellipse(0,p.h/3+10,22,6,0,0,Math.PI*2);ctx.stroke();
+    }
+  }
+  // Fuselage
+  ctx.fillStyle=p.col;
+  ctx.beginPath();
+  ctx.moveTo(0,-p.h/2);ctx.lineTo(p.w*0.18,p.h/3);ctx.lineTo(0,p.h/2);ctx.lineTo(-p.w*0.18,p.h/3);ctx.closePath();
+  ctx.fill();ctx.strokeStyle=p.trim;ctx.lineWidth=2;ctx.stroke();
+  // Swept wings
+  ctx.fillStyle=p.trim;
+  ctx.beginPath();
+  ctx.moveTo(-2,-p.h/8);ctx.lineTo(-p.w/2,p.h/3);ctx.lineTo(p.w/2,p.h/3);ctx.lineTo(2,-p.h/8);ctx.closePath();ctx.fill();
+  // Tail fins
+  ctx.beginPath();ctx.moveTo(-p.w/4,p.h/4);ctx.lineTo(-p.w/2,p.h/2);ctx.lineTo(-p.w/6,p.h/2);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(p.w/4,p.h/4);ctx.lineTo(p.w/2,p.h/2);ctx.lineTo(p.w/6,p.h/2);ctx.closePath();ctx.fill();
+  // Nose cone
+  ctx.fillStyle='#546E7A';
+  ctx.beginPath();ctx.moveTo(0,-p.h/2);ctx.lineTo(6,-p.h/2+12);ctx.lineTo(-6,-p.h/2+12);ctx.closePath();ctx.fill();
+  // Cockpit
+  ctx.fillStyle='#B3E5FC';ctx.beginPath();ctx.ellipse(0,-p.h/4,7,12,0,0,Math.PI*2);ctx.fill();
+  // Engine nacelles
+  ctx.fillStyle='#607D8B';
+  ctx.beginPath();ctx.ellipse(-12,p.h/4,8,16,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(12,p.h/4,8,16,0,0,Math.PI*2);ctx.fill();
+}
+
+function drawBananaPlane(p,spd,active){
+  if(spd>0.1){
+    const fl=spd*30*flk;
+    const eg=ctx.createLinearGradient(0,p.h/3,0,p.h/3+fl);
+    eg.addColorStop(0,'rgba(255,255,150,0.9)');
+    eg.addColorStop(1,'rgba(255,180,0,0)');
+    ctx.fillStyle=eg;
+    ctx.beginPath();ctx.ellipse(0,p.h/3+fl/2,9,fl/2,0,0,Math.PI*2);ctx.fill();
+  }
+  // Banana-curved fuselage (offset points to simulate curve)
+  ctx.fillStyle='#FFEB3B';
+  ctx.beginPath();
+  ctx.moveTo(6,-p.h/2);       // nose (slightly right)
+  ctx.bezierCurveTo(14,-p.h/4, 16,0, 10,p.h/3);    // right curve
+  ctx.lineTo(-10,p.h/3);
+  ctx.bezierCurveTo(-16,0, -14,-p.h/4, -6,-p.h/2); // left curve
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle='#F57F17';ctx.lineWidth=2;ctx.stroke();
+  // Brown stripe along banana
+  ctx.strokeStyle='#8D6E63';ctx.lineWidth=3;ctx.setLineDash([6,4]);
+  ctx.beginPath();ctx.moveTo(8,-p.h/2+10);ctx.bezierCurveTo(14,-p.h/4,12,0,6,p.h/3-5);ctx.stroke();
+  ctx.setLineDash([]);
+  // Wings
+  ctx.fillStyle='#F9A825';
+  ctx.beginPath();ctx.moveTo(-p.w/2,-2);ctx.lineTo(p.w/2,-2);ctx.lineTo(p.w/3,p.h/6);ctx.lineTo(-p.w/3,p.h/6);ctx.closePath();ctx.fill();
+  // Tail
+  ctx.beginPath();ctx.moveTo(-p.w/4,p.h/4);ctx.lineTo(p.w/4,p.h/4);ctx.lineTo(p.w/5,p.h/2);ctx.lineTo(-p.w/5,p.h/2);ctx.closePath();ctx.fill();
+  // Prop
+  const propAng=Date.now()*0.025;
+  ctx.save();ctx.translate(6,-p.h/2+2);
+  ctx.strokeStyle='#795548';ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(propAng)*20,Math.sin(propAng)*20);
+  ctx.lineTo(Math.cos(propAng+Math.PI)*20,Math.sin(propAng+Math.PI)*20);
+  ctx.stroke();
+  ctx.fillStyle='#795548';ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  // Eyes on the banana plane!
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(-5,-p.h/2+22,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#333';ctx.beginPath();ctx.arc(-4,-p.h/2+22,2.5,0,Math.PI*2);ctx.fill();
+}
+
+function drawDeltaPlane(p,spd,active){
+  if(spd>0.05){
+    const fl=spd*40*flk;
+    const eg=ctx.createLinearGradient(0,p.h/2,0,p.h/2+fl);
+    eg.addColorStop(0,'rgba(255,255,255,0.9)');
+    eg.addColorStop(0.3,'rgba(100,180,255,0.7)');
+    eg.addColorStop(0.8,'rgba(255,80,0,0.4)');
+    eg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=eg;
+    ctx.beginPath();ctx.ellipse(0,p.h/2+fl/2,14*flk,fl/2,0,0,Math.PI*2);ctx.fill();
+    if(spd>0.6){
+      ctx.strokeStyle=`rgba(0,220,255,${(spd-0.6)*0.7})`;ctx.lineWidth=3;
+      ctx.beginPath();ctx.ellipse(0,p.h/2+12,28,8,0,0,Math.PI*2);ctx.stroke();
+    }
+  }
+  // Pure delta triangle fuselage
+  ctx.fillStyle=p.col;
+  ctx.beginPath();
+  ctx.moveTo(0,-p.h/2);      // sharp nose
+  ctx.lineTo(p.w/2,p.h/2);  // right rear
+  ctx.lineTo(0,p.h/3);      // center body indent
+  ctx.lineTo(-p.w/2,p.h/2); // left rear
+  ctx.closePath();
+  ctx.fill();ctx.strokeStyle=p.trim;ctx.lineWidth=2;ctx.stroke();
+  // Leading edge accent
+  ctx.strokeStyle='#90A4AE';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(0,-p.h/2+4);ctx.lineTo(p.w/2-4,p.h/2-4);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,-p.h/2+4);ctx.lineTo(-p.w/2+4,p.h/2-4);ctx.stroke();
+  // Vertical tail fin
+  ctx.fillStyle='#546E7A';
+  ctx.beginPath();ctx.moveTo(0,-p.h/5);ctx.lineTo(8,p.h/3);ctx.lineTo(-8,p.h/3);ctx.closePath();ctx.fill();
+  // Cockpit bubble
+  ctx.fillStyle='#E1F5FE';
+  ctx.beginPath();ctx.ellipse(0,-p.h/4,7,10,0,0,Math.PI*2);ctx.fill();
+}
+
+// ── Radar arrows ───────────────────────────────────────────────────────────
+function drawRadarArrows(){
+  const plane=planes[activeP];
+  const margin=60;
+  for(const s of ships){
+    if(!s.alive)continue;
+    const [sx,sy]=w2s(s.x,s.y);
+    if(sx>-50&&sx<canvas.width+50&&sy>-50&&sy<canvas.height+50)continue;
+    // Draw arrow on screen edge
+    const ang=Math.atan2(s.y-plane.y,s.x-plane.x);
+    const edgeX=Math.max(margin,Math.min(canvas.width-margin,canvas.width/2+Math.cos(ang)*500));
+    const edgeY=Math.max(margin,Math.min(canvas.height-margin,canvas.height/2+Math.sin(ang)*400));
+    const clampedX=Math.max(margin,Math.min(canvas.width-margin,canvas.width/2+Math.cos(ang)*(canvas.width)));
+    const clampedY=Math.max(margin,Math.min(canvas.height-margin,canvas.height/2+Math.sin(ang)*(canvas.height)));
+    ctx.save();ctx.translate(clampedX,clampedY);ctx.rotate(ang);
+    ctx.fillStyle='rgba(229,57,53,0.85)';
+    ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-10,-9);ctx.lineTo(-6,0);ctx.lineTo(-10,9);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 10px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+    const dist=Math.round(Math.sqrt((s.x-plane.x)**2+(s.y-plane.y)**2)/10);
+    ctx.fillText(dist+'m',0,0);
+    ctx.restore();
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
+function loop(){
+  waveT++;
+  flk=Math.sin(Date.now()*0.05)*0.15+0.85;
+  updateVolcano();
+  updatePlane();
+  updateTrain();
+  updateShips();
+  updateSeaBlades();
+  updateBombs();
+  updateTorpedoes();
+  updateParticles();
+  updateMsg();
+
+  // Draw
+  drawOcean();
+  drawSmallIslands();
+  drawMainIsland();
+  drawBridge();
+  drawRunway();
+  drawAirport();
+  drawAirport2();
+  drawTrain();
+  drawPizzaFloat();
+  drawVolcano();
+  drawSeaBlades();
+  drawShips();
+  drawBombs();
+  drawTorpedoes();
+
+  // Draw all vehicles (inactive ones first, subs below surface first)
+  for(let i=0;i<planes.length;i++){
+    if(i!==activeP&&planes[i].type==='sub'&&planes[i].dived)drawPlane(planes[i],false);
+  }
+  for(let i=0;i<planes.length;i++){
+    if(i!==activeP&&!(planes[i].type==='sub'&&planes[i].dived))drawPlane(planes[i],false);
+  }
+  drawPlane(planes[activeP],true);
+
+  drawParticles();
+  drawRadarArrows();
+
+  requestAnimationFrame(loop);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+initPlanes();
+spawnShips();
+spawnSeaBlades();
+// Fix camera: start centered on the player's plane
+cam.x = planes[activeP].x - canvas.width/2;
+cam.y = planes[activeP].y - canvas.height/2;
+cam.x = Math.max(0, Math.min(W.w - canvas.width, cam.x));
+cam.y = Math.max(0, Math.min(W.h - canvas.height, cam.y));
+updateVehicleUI();
+updateScoreUI();
+showMessage('🌋 Volcano Pirates! Use ARROW KEYS to fly! SPACE = bomb! 🏴‍☠️');
+loop();
+</script>
+</body>
+</html>

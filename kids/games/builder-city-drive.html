@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Builder City Drive – Infinite</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #000; overflow: hidden; height: 100vh; }
+  canvas { display: block; }
+  #ui {
+    position: absolute; top: 20px; left: 20px;
+    color: white; font-size: 15px;
+    background: rgba(0,0,0,0.55); padding: 12px 18px;
+    border-radius: 12px; pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6); line-height: 1.6;
+  }
+  #ui b { color: #FFD700; }
+  #title {
+    position: absolute; top: 20px; right: 20px;
+    color: white; font-size: 20px; font-weight: 700;
+    background: linear-gradient(135deg, #ff6ec4, #7873f5, #4ADEDE);
+    padding: 10px 20px; border-radius: 12px; pointer-events: none;
+  }
+  #message {
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+    color: white; font-size: 18px;
+    background: rgba(0,0,0,0.7); padding: 14px 24px; border-radius: 14px;
+    opacity: 0; transition: opacity 0.4s; pointer-events: none; text-align: center;
+  }
+  #weather-ctrl { position: absolute; bottom: 20px; right: 20px; display: flex; gap: 8px; }
+  #weather-ctrl button {
+    background: rgba(255,255,255,0.95); border: none;
+    padding: 10px 14px; border-radius: 10px; font-size: 18px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="title">Builder City Drive ∞</div>
+<div id="ui">
+  🎮 <b>Arrows / WASD</b> to drive · <b>Space</b> = brake<br>
+  🟨 Cards: <b><span id="score">0</span></b> · 🏙️ Chunks seen: <b><span id="chunks">0</span></b><br>
+  Follow the arrows to 🗼 Tower, 🏠 Home, 🚧 Sites
+</div>
+<div id="message"></div>
+<div id="weather-ctrl">
+  <button onclick="setWeather('sun')">☀️</button>
+  <button onclick="setWeather('rain')">🌧️</button>
+  <button onclick="setWeather('rainbow')">🌈</button>
+  <button onclick="setWeather('snow')">❄️</button>
+</div>
+<canvas id="game"></canvas>
+
+<script>
+// ===== Canvas setup =====
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); addEventListener('resize', resize);
+
+// ===== Seeded RNG (deterministic per chunk) =====
+function hash32(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177 | 0;
+  h = h ^ (h >>> 16);
+  return (h >>> 0);
+}
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ===== World constants =====
+const BLOCK = 400;
+const ROAD_W = 110;
+
+// onRoad: point is on road if within ROAD_W/2 of any BLOCK-line (infinite grid)
+function onRoad(x, y) {
+  const rx = ((x % BLOCK) + BLOCK) % BLOCK;
+  const ry = ((y % BLOCK) + BLOCK) % BLOCK;
+  const dx = Math.min(rx, BLOCK - rx);
+  const dy = Math.min(ry, BLOCK - ry);
+  return dx <= ROAD_W/2 || dy <= ROAD_W/2;
+}
+
+// ===== Chunks cache =====
+const chunks = new Map();
+let chunkSeenCount = 0;
+
+const BUILDING_COLORS = ['#E8A87C','#C38D9E','#85DCB0','#41B3A3','#E27D60','#85CDCA','#F7B7A3','#D7CCC8','#90CAF9','#FFAB91','#BCAAA4','#CE93D8'];
+
+function getChunk(cx, cy) {
+  const key = cx + ',' + cy;
+  if (chunks.has(key)) return chunks.get(key);
+  const rnd = mulberry(hash32(cx, cy));
+
+  // Chunk world bounds
+  const x0 = cx * BLOCK;
+  const y0 = cy * BLOCK;
+  const pad = ROAD_W/2 + 18;
+  const ix0 = x0 + pad, iy0 = y0 + pad;
+  const ix1 = x0 + BLOCK - pad, iy1 = y0 + BLOCK - pad;
+
+  // Pick theme
+  // Near origin (2 chunks out) is always plain blocks or landmarks
+  const nearOrigin = Math.abs(cx) <= 2 && Math.abs(cy) <= 2;
+  let theme;
+  // Landmark chunks
+  if (cx === 0 && cy === -1) theme = 'tower';
+  else if (cx === -1 && cy === 1) theme = 'home';
+  else if (cx === 1 && cy === 1) theme = 'site';
+  else {
+    const roll = rnd();
+    if (!nearOrigin && roll < 0.12) theme = 'site';          // occasional construction sites
+    else if (roll < 0.28) theme = 'park';
+    else if (roll < 0.35) theme = 'plaza';
+    else theme = 'blocks';
+  }
+
+  const chunk = { cx, cy, theme, buildings: [], decos: [], vehicles: [], builders: [], landmark: null };
+
+  if (theme === 'blocks') {
+    for (let i = 0; i < 2; i++) {
+      for (let j = 0; j < 2; j++) {
+        const bw = (ix1 - ix0) / 2 - 14;
+        const bh = (iy1 - iy0) / 2 - 14;
+        chunk.buildings.push({
+          x: ix0 + i*(ix1-ix0)/2 + 6,
+          y: iy0 + j*(iy1-iy0)/2 + 6,
+          w: bw, h: bh,
+          color: BUILDING_COLORS[Math.floor(rnd()*BUILDING_COLORS.length)],
+          cols: 2 + Math.floor(rnd()*2),
+          rows: 3 + Math.floor(rnd()*2),
+        });
+      }
+    }
+    // random decos on the narrow strips next to roads
+    addRoadsideDecos(chunk, rnd, x0, y0);
+  }
+  else if (theme === 'park') {
+    // Open park - trees, bench, maybe fountain
+    const hasFountain = rnd() < 0.5;
+    if (hasFountain) chunk.decos.push({ type: 'fountain', x: (ix0+ix1)/2, y: (iy0+iy1)/2 });
+    const trees = 8 + Math.floor(rnd()*8);
+    for (let i = 0; i < trees; i++) {
+      chunk.decos.push({ type: 'tree', x: ix0 + rnd()*(ix1-ix0), y: iy0 + rnd()*(iy1-iy0), size: 14 + rnd()*10 });
+    }
+    chunk.decos.push({ type: 'bench', x: ix0 + 40, y: iy1 - 40 });
+    chunk.decos.push({ type: 'bench', x: ix1 - 60, y: iy0 + 40 });
+  }
+  else if (theme === 'plaza') {
+    // Statue in the middle, some decorations
+    chunk.decos.push({ type: 'statue', x: (ix0+ix1)/2, y: (iy0+iy1)/2 });
+    for (let i = 0; i < 4; i++) {
+      chunk.decos.push({ type: 'tree', x: ix0 + rnd()*(ix1-ix0), y: iy0 + rnd()*(iy1-iy0), size: 12 + rnd()*6 });
+    }
+    chunk.decos.push({ type: 'lamp', x: ix0 + 30, y: iy0 + 30 });
+    chunk.decos.push({ type: 'lamp', x: ix1 - 30, y: iy1 - 30 });
+  }
+  else if (theme === 'site') {
+    // Construction site with vehicles + 4 builders
+    const cx0 = (ix0+ix1)/2, cy0 = (iy0+iy1)/2;
+    chunk.landmark = { type: 'site', x: cx0, y: cy0, w: ix1-ix0, h: iy1-iy0, visited: false };
+    chunk.vehicles.push({ type: 'bulldozer', x: cx0 - 70, y: cy0 - 70, w: 60, h: 42, angle: rnd()*0.4 });
+    chunk.vehicles.push({ type: 'dumptruck', x: cx0 + 70, y: cy0 - 70, w: 72, h: 46, angle: -rnd()*0.4 });
+    chunk.vehicles.push({ type: 'excavator', x: cx0 - 70, y: cy0 + 70, w: 64, h: 48, angle: rnd()*0.4 });
+    chunk.vehicles.push({ type: 'mixer',     x: cx0 + 70, y: cy0 + 70, w: 72, h: 46, angle: -rnd()*0.4 });
+    const offsets = [[-25,-25],[25,-25],[-25,25],[25,25]];
+    for (const [dx,dy] of offsets) {
+      chunk.builders.push({ id: cx + '_' + cy + '_' + dx + '_' + dy, x: cx0+dx, y: cy0+dy, bob: rnd()*Math.PI*2 });
+    }
+  }
+  else if (theme === 'tower') {
+    const tx = (ix0+ix1)/2 - 60, ty = (iy0+iy1)/2 - 130;
+    chunk.landmark = { type: 'tower', x: tx, y: ty, w: 120, h: 260, visited: false };
+    chunk.buildings.push({ x: tx, y: ty + 40, w: 120, h: 220, color:'#F5F5F5', cols:2, rows:7, _tower:true });
+  }
+  else if (theme === 'home') {
+    const hx = (ix0+ix1)/2 - 90, hy = (iy0+iy1)/2 - 60;
+    chunk.landmark = { type: 'home', x: hx, y: hy, w: 180, h: 140, visited: false };
+    chunk.buildings.push({ x: hx, y: hy, w: 180, h: 140, color:'#FFECB3', cols:2, rows:2, _home:true });
+  }
+
+  // Add random small decorations to most themes (lamps/mailboxes/hydrants near corners)
+  if (theme === 'blocks' || theme === 'site') {
+    if (rnd() < 0.6) chunk.decos.push({ type: 'lamp', x: x0 + ROAD_W/2 + 10, y: y0 + ROAD_W/2 + 10 });
+    if (rnd() < 0.6) chunk.decos.push({ type: 'hydrant', x: x0 + BLOCK - ROAD_W/2 - 10, y: y0 + ROAD_W/2 + 10 });
+    if (rnd() < 0.4) chunk.decos.push({ type: 'mailbox', x: x0 + ROAD_W/2 + 10, y: y0 + BLOCK - ROAD_W/2 - 10 });
+  }
+
+  chunks.set(key, chunk);
+  chunkSeenCount++;
+  document.getElementById('chunks').textContent = chunkSeenCount;
+  return chunk;
+}
+
+function addRoadsideDecos(chunk, rnd, x0, y0) {
+  // Scatter a few grass/bush tufts inside the block
+  const n = 3 + Math.floor(rnd()*4);
+  for (let i = 0; i < n; i++) {
+    chunk.decos.push({
+      type: rnd() < 0.5 ? 'tree' : 'bush',
+      x: x0 + ROAD_W/2 + 20 + rnd()*(BLOCK - ROAD_W - 40),
+      y: y0 + ROAD_W/2 + 20 + rnd()*(BLOCK - ROAD_W - 40),
+      size: 8 + rnd()*8
+    });
+  }
+}
+
+// ===== Car =====
+const car = {
+  x: BLOCK * 0.5, y: BLOCK * 0.5,
+  angle: 0,
+  speed: 0,
+  maxSpeed: 5.5,
+  accel: 0.18,
+  friction: 0.06,
+  turnSpeed: 0.035,    // lower => less spinny
+  w: 38, h: 66
+};
+const cam = { x: 0, y: 0 };
+
+// ===== Weather =====
+let weather = 'sun';
+let sunAngle = 0;
+const raindrops = [];
+for (let i = 0; i < 180; i++) raindrops.push({ x: Math.random()*2000, y: Math.random()*2000, l: 10+Math.random()*15, s: 8+Math.random()*6 });
+const snowflakes = [];
+for (let i = 0; i < 220; i++) snowflakes.push({ x: Math.random()*2000, y: Math.random()*2000, r: 1.5+Math.random()*2.5, s: 0.8+Math.random()*1.4, drift: Math.random()*Math.PI*2 });
+function setWeather(w) {
+  weather = w;
+  const msg = { sun:'☀️ Sunny day!', rain:'🌧️ Rain starts...', rainbow:'🌈 Rainbow appears!', snow:'❄️ Snow is falling!' }[w];
+  showMessage(msg);
+}
+
+// ===== Collected state =====
+const collected = new Set(); // builder ids
+let score = 0;
+function showMessage(text) {
+  const m = document.getElementById('message');
+  m.textContent = text; m.style.opacity = 1;
+  clearTimeout(m._t); m._t = setTimeout(() => m.style.opacity = 0, 2500);
+}
+
+// ===== Input =====
+const keys = {};
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault(); });
+addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+// ===== Helpers =====
+function w2s(x, y) { return [x - cam.x, y - cam.y]; }
+
+function visibleChunks() {
+  const margin = 1;
+  const cx0 = Math.floor(cam.x / BLOCK) - margin;
+  const cy0 = Math.floor(cam.y / BLOCK) - margin;
+  const cx1 = Math.floor((cam.x + W) / BLOCK) + margin;
+  const cy1 = Math.floor((cam.y + H) / BLOCK) + margin;
+  const list = [];
+  for (let cx = cx0; cx <= cx1; cx++)
+    for (let cy = cy0; cy <= cy1; cy++)
+      list.push(getChunk(cx, cy));
+  return list;
+}
+
+function nearbyChunks() {
+  // Chunks around the car for collision checks
+  const ccx = Math.floor(car.x / BLOCK);
+  const ccy = Math.floor(car.y / BLOCK);
+  const list = [];
+  for (let dx = -1; dx <= 1; dx++)
+    for (let dy = -1; dy <= 1; dy++)
+      list.push(getChunk(ccx + dx, ccy + dy));
+  return list;
+}
+
+// ===== Update =====
+function updateCar() {
+  // Brake with Space
+  if (keys[' ']) car.speed *= 0.90;
+
+  if (keys['arrowup'] || keys['w']) car.speed += car.accel;
+  else if (keys['arrowdown'] || keys['s']) car.speed -= car.accel;
+  else {
+    if (car.speed > 0) car.speed = Math.max(0, car.speed - car.friction);
+    else car.speed = Math.min(0, car.speed + car.friction);
+  }
+  car.speed = Math.max(-car.maxSpeed*0.6, Math.min(car.maxSpeed, car.speed));
+
+  // Smoother turning (less spinny):
+  // turn factor scales with speed — almost no turning at a full stop, near-linear up to 1x
+  const absSpeed = Math.abs(car.speed);
+  if (absSpeed > 0.05) {
+    const dir = car.speed >= 0 ? 1 : -1;
+    const factor = Math.min(1, absSpeed / (car.maxSpeed * 0.6));
+    if (keys['arrowleft']  || keys['a']) car.angle -= car.turnSpeed * factor * dir;
+    if (keys['arrowright'] || keys['d']) car.angle += car.turnSpeed * factor * dir;
+  }
+
+  let nx = car.x + Math.sin(car.angle) * car.speed;
+  let ny = car.y - Math.cos(car.angle) * car.speed;
+
+  // Collision against nearby chunk buildings + vehicles
+  const pad = 4;
+  function blocked(x, y) {
+    for (const c of nearbyChunks()) {
+      for (const b of c.buildings) {
+        if (x > b.x - pad && x < b.x + b.w + pad &&
+            y > b.y - pad && y < b.y + b.h + pad) return true;
+      }
+      for (const v of c.vehicles) {
+        if (x > v.x - v.w/2 - pad && x < v.x + v.w/2 + pad &&
+            y > v.y - v.h/2 - pad && y < v.y + v.h/2 + pad) return true;
+      }
+    }
+    return false;
+  }
+
+  // Sliding collision: X then Y separately
+  const bx = blocked(nx, car.y);
+  const by = blocked(car.x, ny);
+  if (!bx) car.x = nx; else car.speed *= 0.45;
+  if (!by) car.y = ny; else car.speed *= 0.45;
+
+  // If the CURRENT cell is now blocked (shouldn't happen, but if stuck), eject the car
+  if (blocked(car.x, car.y)) {
+    // Try pushing in 4 directions and take the first free cell
+    for (const [ox, oy] of [[0,-6],[0,6],[-6,0],[6,0],[0,-14],[0,14],[-14,0],[14,0]]) {
+      if (!blocked(car.x + ox, car.y + oy)) { car.x += ox; car.y += oy; break; }
+    }
+    car.speed = 0;
+  }
+
+  // Off-road soft slowdown
+  if (!onRoad(car.x, car.y)) car.speed *= 0.93;
+
+  cam.x = car.x - W/2;
+  cam.y = car.y - H/2;
+}
+
+function checkPickups() {
+  for (const c of nearbyChunks()) {
+    for (const b of c.builders) {
+      if (collected.has(b.id)) continue;
+      const dx = car.x - b.x, dy = car.y - b.y;
+      if (dx*dx + dy*dy < 2500) {
+        collected.add(b.id); score++;
+        document.getElementById('score').textContent = score;
+        showMessage('🟨 Builder card collected!');
+      }
+    }
+    if (c.landmark && !c.landmark.visited) {
+      const L = c.landmark;
+      const ok = (L.type === 'site')
+        ? Math.abs(car.x - L.x) < L.w/2 + 20 && Math.abs(car.y - L.y) < L.h/2 + 20
+        : (car.x > L.x - 40 && car.x < L.x + L.w + 40 && car.y > L.y - 40 && car.y < L.y + L.h + 40);
+      if (ok) {
+        L.visited = true;
+        const names = { tower:'🗼 You reached the Tower!', home:'🏠 Welcome Home! Satellite TV on.', site:'🚧 Construction Site visited!' };
+        showMessage(names[L.type]);
+      }
+    }
+  }
+}
+
+// ===== Drawing =====
+function drawSky() {
+  let grad = ctx.createLinearGradient(0, 0, 0, H);
+  if (weather === 'sun')      { grad.addColorStop(0,'#87CEEB'); grad.addColorStop(1,'#B3E5FC'); }
+  else if (weather === 'rain'){ grad.addColorStop(0,'#556677'); grad.addColorStop(1,'#8494A3'); }
+  else if (weather === 'snow'){ grad.addColorStop(0,'#B0BEC5'); grad.addColorStop(1,'#ECEFF1'); }
+  else                        { grad.addColorStop(0,'#A0D8EF'); grad.addColorStop(1,'#D4E8C3'); }
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+}
+
+function drawGround() {
+  // Solid grass background covering the visible area (infinite)
+  ctx.fillStyle = (weather === 'snow') ? '#F5F9FA' : '#7CB342';
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawRoads() {
+  // Draw every road line that intersects the visible area
+  const cx0 = Math.floor(cam.x / BLOCK) - 1;
+  const cy0 = Math.floor(cam.y / BLOCK) - 1;
+  const cx1 = Math.floor((cam.x + W) / BLOCK) + 1;
+  const cy1 = Math.floor((cam.y + H) / BLOCK) + 1;
+
+  // Cement
+  ctx.fillStyle = '#9E9E9E';
+  for (let cx = cx0; cx <= cx1 + 1; cx++) {
+    const vx = cx * BLOCK;
+    const [sx] = w2s(vx - ROAD_W/2, 0);
+    ctx.fillRect(sx, 0, ROAD_W, H);
+  }
+  for (let cy = cy0; cy <= cy1 + 1; cy++) {
+    const hy = cy * BLOCK;
+    const [, sy] = w2s(0, hy - ROAD_W/2);
+    ctx.fillRect(0, sy, W, ROAD_W);
+  }
+  // Yellow dashed centre
+  ctx.strokeStyle = '#FFEB3B'; ctx.lineWidth = 3; ctx.setLineDash([24, 20]);
+  for (let cx = cx0; cx <= cx1 + 1; cx++) {
+    const vx = cx * BLOCK; const [sx] = w2s(vx, 0);
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+  }
+  for (let cy = cy0; cy <= cy1 + 1; cy++) {
+    const hy = cy * BLOCK; const [, sy] = w2s(0, hy);
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // White edge lines
+  ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2;
+  for (let cx = cx0; cx <= cx1 + 1; cx++) {
+    for (const off of [-ROAD_W/2, ROAD_W/2]) {
+      const vx = cx * BLOCK + off; const [sx] = w2s(vx, 0);
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+    }
+  }
+  for (let cy = cy0; cy <= cy1 + 1; cy++) {
+    for (const off of [-ROAD_W/2, ROAD_W/2]) {
+      const hy = cy * BLOCK + off; const [, sy] = w2s(0, hy);
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+    }
+  }
+}
+
+function drawBuildings(chunks) {
+  for (const c of chunks) {
+    for (const b of c.buildings) {
+      const [sx, sy] = w2s(b.x, b.y);
+      if (sx+b.w < 0 || sx > W || sy+b.h < 0 || sy > H) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(sx+5, sy+5, b.w, b.h);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(sx, sy, b.w, b.h);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(sx, sy, b.w, 8);
+      ctx.fillStyle = (weather === 'rain') ? '#FFF8DC' : '#FFF59D';
+      const cellW = b.w / b.cols;
+      const cellH = b.h / (b.rows + 1);
+      for (let r = 1; r <= b.rows; r++) {
+        for (let c2 = 0; c2 < b.cols; c2++) {
+          const wx = sx + c2*cellW + cellW*0.2;
+          const wy = sy + r*cellH + 4;
+          ctx.fillRect(wx, wy, cellW*0.6, cellH*0.5);
+        }
+      }
+      // Snow cap on top of buildings
+      if (weather === 'snow') {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(sx-2, sy-4, b.w+4, 6);
+      }
+    }
+  }
+}
+
+function drawLandmarks(chunks) {
+  for (const c of chunks) {
+    if (!c.landmark) continue;
+    const L = c.landmark;
+    if (L.type === 'tower') {
+      const [sx, sy] = w2s(L.x, L.y);
+      const grad = ctx.createLinearGradient(sx, sy, sx + L.w, sy);
+      grad.addColorStop(0,'#BDBDBD'); grad.addColorStop(0.5,'#F5F5F5'); grad.addColorStop(1,'#BDBDBD');
+      ctx.fillStyle = grad; ctx.fillRect(sx, sy+40, L.w, L.h-40);
+      ctx.fillStyle = '#E53935';
+      ctx.beginPath(); ctx.moveTo(sx-10, sy+40); ctx.lineTo(sx+L.w/2, sy-30); ctx.lineTo(sx+L.w+10, sy+40); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#FFD54F';
+      for (let i = 0; i < 8; i++) ctx.fillRect(sx+20, sy+60+i*25, L.w-40, 10);
+      ctx.fillStyle = '#1E88E5'; ctx.fillRect(sx+L.w/2, sy-80, 2, 50);
+      ctx.fillStyle = '#FFD700'; ctx.fillRect(sx+L.w/2+2, sy-80, 30, 18);
+      ctx.fillStyle = 'white'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('TOWER', sx+L.w/2, sy+L.h+18);
+    }
+    else if (L.type === 'home') {
+      const [sx, sy] = w2s(L.x, L.y);
+      ctx.fillStyle = '#FFECB3'; ctx.fillRect(sx, sy+40, L.w, L.h-40);
+      ctx.fillStyle = '#8B4513';
+      ctx.beginPath(); ctx.moveTo(sx-10, sy+40); ctx.lineTo(sx+L.w/2, sy-20); ctx.lineTo(sx+L.w+10, sy+40); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#6D4C41'; ctx.fillRect(sx+L.w/2-15, sy+L.h-50, 30, 50);
+      ctx.fillStyle = '#81D4FA';
+      ctx.fillRect(sx+20, sy+60, 35, 30);
+      ctx.fillRect(sx+L.w-55, sy+60, 35, 30);
+      ctx.fillStyle = '#757575'; ctx.fillRect(sx+L.w-20, sy-20, 3, 40);
+      ctx.beginPath(); ctx.ellipse(sx+L.w-10, sy-30, 18, 10, 0.3, 0, Math.PI*2);
+      ctx.fillStyle = '#E0E0E0'; ctx.fill(); ctx.strokeStyle = '#424242'; ctx.stroke();
+      ctx.fillStyle = 'white'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('HOME 📡', sx+L.w/2, sy+L.h+18);
+    }
+    else if (L.type === 'site') {
+      // Dirt site
+      const [sx, sy] = w2s(L.x - L.w/2, L.y - L.h/2);
+      ctx.fillStyle = '#A1887F'; ctx.fillRect(sx, sy, L.w, L.h);
+      ctx.fillStyle = '#8D6E63';
+      for (let i = 0; i < 30; i++)
+        ctx.fillRect(sx + (i*37) % L.w, sy + (i*71) % L.h, 4, 4);
+      // Cones at corners
+      ctx.fillStyle = '#FF5722';
+      const cones = [[sx+10, sy+10],[sx+L.w-14, sy+10],[sx+10, sy+L.h-14],[sx+L.w-14, sy+L.h-14]];
+      for (const [ccx, ccy] of cones) {
+        ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(ccx-5, ccy+12); ctx.lineTo(ccx+5, ccy+12); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'white'; ctx.fillRect(ccx-4, ccy+5, 8, 2); ctx.fillStyle = '#FF5722';
+      }
+      ctx.fillStyle = 'white'; ctx.strokeStyle = 'black'; ctx.lineWidth = 3;
+      ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+      ctx.strokeText('🚧 CONSTRUCTION 🚧', sx + L.w/2, sy + L.h + 16);
+      ctx.fillText('🚧 CONSTRUCTION 🚧', sx + L.w/2, sy + L.h + 16);
+    }
+  }
+}
+
+function drawDecos(chunks) {
+  for (const c of chunks) {
+    for (const d of c.decos) {
+      const [sx, sy] = w2s(d.x, d.y);
+      if (sx < -40 || sx > W+40 || sy < -40 || sy > H+40) continue;
+      if (d.type === 'tree') {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath(); ctx.ellipse(sx+2, sy+2, d.size, d.size*0.6, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#2E7D32';
+        ctx.beginPath(); ctx.arc(sx, sy, d.size, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#4CAF50';
+        ctx.beginPath(); ctx.arc(sx-d.size*0.3, sy-d.size*0.3, d.size*0.7, 0, Math.PI*2); ctx.fill();
+        if (weather === 'snow') {
+          ctx.fillStyle = 'white';
+          ctx.beginPath(); ctx.arc(sx-d.size*0.3, sy-d.size*0.5, d.size*0.5, 0, Math.PI*2); ctx.fill();
+        }
+      }
+      else if (d.type === 'bush') {
+        ctx.fillStyle = '#388E3C';
+        ctx.beginPath(); ctx.arc(sx, sy, d.size, 0, Math.PI*2); ctx.fill();
+      }
+      else if (d.type === 'lamp') {
+        ctx.fillStyle = '#424242';
+        ctx.fillRect(sx-1, sy-18, 2, 18);
+        ctx.fillStyle = (weather === 'rain' || weather === 'snow') ? '#FFF59D' : '#FFEB3B';
+        ctx.beginPath(); ctx.arc(sx, sy-22, 4, 0, Math.PI*2); ctx.fill();
+      }
+      else if (d.type === 'hydrant') {
+        ctx.fillStyle = '#C62828'; ctx.fillRect(sx-4, sy-8, 8, 12);
+        ctx.fillStyle = '#E53935'; ctx.beginPath(); ctx.arc(sx, sy-10, 4, 0, Math.PI*2); ctx.fill();
+      }
+      else if (d.type === 'mailbox') {
+        ctx.fillStyle = '#1565C0'; ctx.fillRect(sx-5, sy-10, 10, 10);
+        ctx.fillStyle = '#1976D2'; ctx.fillRect(sx-5, sy-10, 10, 3);
+      }
+      else if (d.type === 'bench') {
+        ctx.fillStyle = '#6D4C41'; ctx.fillRect(sx-14, sy-2, 28, 4); ctx.fillRect(sx-14, sy+4, 28, 2);
+        ctx.fillStyle = '#3E2723'; ctx.fillRect(sx-13, sy+5, 3, 5); ctx.fillRect(sx+10, sy+5, 3, 5);
+      }
+      else if (d.type === 'fountain') {
+        ctx.fillStyle = '#90A4AE';
+        ctx.beginPath(); ctx.arc(sx, sy, 40, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#B0BEC5';
+        ctx.beginPath(); ctx.arc(sx, sy, 34, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#4FC3F7';
+        ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#81D4FA';
+        ctx.beginPath(); ctx.arc(sx, sy, 18, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#E1F5FE';
+        ctx.beginPath(); ctx.arc(sx, sy-2, 5, 0, Math.PI*2); ctx.fill();
+      }
+      else if (d.type === 'statue') {
+        ctx.fillStyle = '#9E9E9E';
+        ctx.fillRect(sx-16, sy+10, 32, 10);
+        ctx.fillRect(sx-6, sy-20, 12, 30);
+        ctx.beginPath(); ctx.arc(sx, sy-26, 8, 0, Math.PI*2); ctx.fill();
+      }
+    }
+  }
+}
+
+function drawVehicles(chunks) {
+  for (const c of chunks) {
+    for (const v of c.vehicles) {
+      const [sx, sy] = w2s(v.x, v.y);
+      if (sx < -80 || sx > W+80 || sy < -80 || sy > H+80) continue;
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(v.angle);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(-v.w/2+3, -v.h/2+3, v.w, v.h);
+      if (v.type === 'bulldozer') {
+        ctx.fillStyle = '#F9A825'; ctx.fillRect(-v.w/2+10, -v.h/2+6, v.w-20, v.h-12);
+        ctx.fillStyle = '#FFCA28'; ctx.fillRect(-8, -v.h/2+10, 16, 14);
+        ctx.fillStyle = '#263238'; ctx.fillRect(-6, -v.h/2+12, 12, 4);
+        ctx.fillStyle = '#B0BEC5'; ctx.fillRect(-v.w/2-4, -v.h/2+2, 8, v.h-4);
+        ctx.fillStyle = '#263238';
+        ctx.fillRect(-v.w/2+6, -v.h/2, v.w-12, 5);
+        ctx.fillRect(-v.w/2+6, v.h/2-5, v.w-12, 5);
+      }
+      else if (v.type === 'dumptruck') {
+        ctx.fillStyle = '#1976D2'; ctx.fillRect(-v.w/2, -v.h/2+4, 20, v.h-8);
+        ctx.fillStyle = '#90CAF9'; ctx.fillRect(-v.w/2+4, -v.h/2+8, 12, 8);
+        ctx.fillStyle = '#EF6C00'; ctx.fillRect(-v.w/2+22, -v.h/2+2, v.w-26, v.h-4);
+        ctx.fillStyle = '#BF360C'; ctx.fillRect(-v.w/2+22, -v.h/2+2, v.w-26, 3);
+        ctx.fillStyle = '#212121';
+        for (const dx of [-v.w/2+4, v.w/2-24, v.w/2-12]) {
+          ctx.fillRect(dx, -v.h/2-3, 10, 4);
+          ctx.fillRect(dx, v.h/2-1, 10, 4);
+        }
+      }
+      else if (v.type === 'excavator') {
+        ctx.fillStyle = '#263238';
+        ctx.fillRect(-v.w/2, -v.h/2, v.w, 6);
+        ctx.fillRect(-v.w/2, v.h/2-6, v.w, 6);
+        ctx.fillStyle = '#FFC107'; ctx.fillRect(-v.w/2+6, -v.h/2+8, v.w-20, v.h-16);
+        ctx.fillStyle = '#FFD54F'; ctx.fillRect(-v.w/2+8, -v.h/2+12, 14, 10);
+        ctx.fillStyle = '#263238'; ctx.fillRect(-v.w/2+10, -v.h/2+14, 10, 4);
+        ctx.strokeStyle = '#FFC107'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(v.w/2-4, -v.h/2-4); ctx.lineTo(v.w/2+12, 4); ctx.stroke();
+        ctx.fillStyle = '#757575'; ctx.fillRect(v.w/2+8, 0, 10, 10);
+        ctx.fillStyle = '#424242'; ctx.fillRect(v.w/2+8, 9, 10, 2);
+      }
+      else if (v.type === 'mixer') {
+        ctx.fillStyle = '#C62828'; ctx.fillRect(-v.w/2, -v.h/2+4, 18, v.h-8);
+        ctx.fillStyle = '#90CAF9'; ctx.fillRect(-v.w/2+3, -v.h/2+8, 12, 8);
+        ctx.fillStyle = '#BDBDBD';
+        ctx.beginPath(); ctx.ellipse(8, 0, v.w/2-10, v.h/2-2, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#757575'; ctx.lineWidth = 2;
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath(); ctx.ellipse(8, 0, Math.max(3, v.w/2-10-Math.abs(i)*2), Math.max(2, v.h/2-2-Math.abs(i)), 0, 0, Math.PI*2); ctx.stroke();
+        }
+        ctx.fillStyle = '#212121';
+        for (const dx of [-v.w/2+4, v.w/2-16]) {
+          ctx.fillRect(dx, -v.h/2-3, 10, 4);
+          ctx.fillRect(dx, v.h/2-1, 10, 4);
+        }
+      }
+      ctx.restore();
+    }
+  }
+}
+
+function drawBuilders(chunks) {
+  for (const c of chunks) {
+    for (const b of c.builders) {
+      if (collected.has(b.id)) continue;
+      const [sx, sy] = w2s(b.x, b.y);
+      if (sx < -40 || sx > W+40 || sy < -40 || sy > H+40) continue;
+      b.bob += 0.06;
+      const bob = Math.sin(b.bob) * 3;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.ellipse(sx, sy+20, 14, 4, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#FF9800'; ctx.fillRect(sx-10, sy-10+bob, 20, 24);
+      ctx.fillStyle = '#FFF59D'; ctx.fillRect(sx-10, sy+bob, 20, 3);
+      ctx.fillStyle = '#FFE0B2';
+      ctx.beginPath(); ctx.arc(sx, sy-16+bob, 8, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#FFEB3B';
+      ctx.beginPath(); ctx.arc(sx, sy-18+bob, 9, Math.PI, 0); ctx.fill();
+      ctx.fillRect(sx-11, sy-19+bob, 22, 2);
+      const cardY = sy-42+bob;
+      ctx.fillStyle = 'white'; ctx.fillRect(sx-12, cardY, 24, 16);
+      ctx.strokeStyle = '#1E88E5'; ctx.lineWidth = 2; ctx.strokeRect(sx-12, cardY, 24, 16);
+      ctx.fillStyle = '#FFD700'; ctx.fillRect(sx-10, cardY+2, 8, 4);
+      ctx.fillStyle = '#1E88E5'; ctx.fillRect(sx-10, cardY+8, 18, 2); ctx.fillRect(sx-10, cardY+11, 14, 2);
+    }
+  }
+}
+
+function drawCar() {
+  const [sx, sy] = w2s(car.x, car.y);
+  ctx.save(); ctx.translate(sx, sy); ctx.rotate(car.angle);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-car.w/2+4, -car.h/2+4, car.w, car.h);
+  const grad = ctx.createLinearGradient(-car.w/2, 0, car.w/2, 0);
+  grad.addColorStop(0,'#C62828'); grad.addColorStop(0.5,'#EF5350'); grad.addColorStop(1,'#C62828');
+  ctx.fillStyle = grad; ctx.fillRect(-car.w/2, -car.h/2, car.w, car.h);
+  ctx.fillStyle = '#263238';
+  ctx.fillRect(-car.w/2+4, -car.h/2+10, car.w-8, 16);
+  ctx.fillRect(-car.w/2+4, car.h/2-20, car.w-8, 12);
+  ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(-car.w/2+4, -car.h/2+28, car.w-8, car.h-50);
+  ctx.fillStyle = '#FFF59D'; ctx.fillRect(-car.w/2+2, -car.h/2, 8, 4); ctx.fillRect(car.w/2-10, -car.h/2, 8, 4);
+  ctx.fillStyle = '#B71C1C'; ctx.fillRect(-car.w/2+2, car.h/2-4, 8, 4); ctx.fillRect(car.w/2-10, car.h/2-4, 8, 4);
+  ctx.fillStyle = '#212121';
+  ctx.fillRect(-car.w/2-3, -car.h/2+10, 5, 14);
+  ctx.fillRect(car.w/2-2, -car.h/2+10, 5, 14);
+  ctx.fillRect(-car.w/2-3, car.h/2-24, 5, 14);
+  ctx.fillRect(car.w/2-2, car.h/2-24, 5, 14);
+  ctx.restore();
+}
+
+function drawSun() {
+  if (weather !== 'sun' && weather !== 'rainbow') return;
+  sunAngle += 0.005;
+  const cx = W-120, cy = 120;
+  const glow = ctx.createRadialGradient(cx, cy, 20, cx, cy, 120);
+  glow.addColorStop(0,'rgba(255,236,130,0.9)'); glow.addColorStop(1,'rgba(255,236,130,0)');
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, 120, 0, Math.PI*2); ctx.fill();
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(sunAngle);
+  ctx.strokeStyle = 'rgba(255,221,85,0.7)'; ctx.lineWidth = 4;
+  for (let i = 0; i < 12; i++) {
+    ctx.beginPath(); ctx.moveTo(50, 0); ctx.lineTo(75, 0); ctx.stroke();
+    ctx.rotate(Math.PI*2/12);
+  }
+  ctx.restore();
+  ctx.fillStyle = '#FFEB3B'; ctx.beginPath(); ctx.arc(cx, cy, 42, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#FFF176'; ctx.beginPath(); ctx.arc(cx-10, cy-10, 10, 0, Math.PI*2); ctx.fill();
+}
+
+function drawRain() {
+  if (weather !== 'rain') return;
+  ctx.strokeStyle = 'rgba(180,210,255,0.7)'; ctx.lineWidth = 2;
+  for (const r of raindrops) {
+    ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(r.x-2, r.y+r.l); ctx.stroke();
+    r.y += r.s; r.x -= 1;
+    if (r.y > H) { r.y = -20; r.x = Math.random()*W + 50; }
+    if (r.x < 0) r.x = W;
+  }
+  ctx.fillStyle = 'rgba(30,40,60,0.15)'; ctx.fillRect(0, 0, W, H);
+}
+
+function drawSnow() {
+  if (weather !== 'snow') return;
+  ctx.fillStyle = 'white';
+  for (const s of snowflakes) {
+    s.drift += 0.02;
+    s.x += Math.sin(s.drift)*0.6;
+    s.y += s.s;
+    if (s.y > H) { s.y = -10; s.x = Math.random()*W; }
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(0, 0, W, H);
+}
+
+function drawRainbow() {
+  if (weather !== 'rainbow') return;
+  const colors = ['#FF5252','#FF9800','#FFEB3B','#4CAF50','#2196F3','#3F51B5','#9C27B0'];
+  const cx = W/2, cy = H+100;
+  for (let i = 0; i < colors.length; i++) {
+    ctx.strokeStyle = colors[i]; ctx.lineWidth = 18; ctx.globalAlpha = 0.7;
+    ctx.beginPath(); ctx.arc(cx, cy, 500-i*18, Math.PI, Math.PI*2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Arrows to fixed landmarks
+const landmarkRefs = { tower: {cx:0, cy:-1}, home: {cx:-1, cy:1}, site0: {cx:1, cy:1} };
+function drawArrows() {
+  const targets = [
+    { name:'🗼 Tower', color:'#E53935', cx:0, cy:-1 },
+    { name:'🏠 Home',  color:'#FFD700', cx:-1, cy:1 },
+    { name:'🚧 Site',  color:'#FF7043', cx:1, cy:1 },
+  ];
+  for (const t of targets) {
+    const tx = t.cx * BLOCK + BLOCK/2;
+    const ty = t.cy * BLOCK + BLOCK/2;
+    const [ssx, ssy] = w2s(tx, ty);
+    if (ssx > 60 && ssx < W-60 && ssy > 60 && ssy < H-60) continue;
+    const ang = Math.atan2(ty - car.y, tx - car.x);
+    const ccx = W/2, ccy = H/2;
+    const r = Math.min(W, H)/2 - 90;
+    const ax = ccx + Math.cos(ang)*r;
+    const ay = ccy + Math.sin(ang)*r;
+    ctx.save(); ctx.translate(ax, ay); ctx.rotate(ang);
+    ctx.fillStyle = t.color;
+    ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-12, -12); ctx.lineTo(-12, 12); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = t.color; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(t.name, ax, ay - 22);
+  }
+}
+
+function drawRadar() {
+  // Local radar around the car
+  const mw = 180, mh = 180;
+  const mx = W - mw - 20, my = H - mh - 80;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(mx, my, mw, mh);
+  ctx.strokeStyle = 'white'; ctx.strokeRect(mx, my, mw, mh);
+  const range = BLOCK * 3; // world units visible
+  const scale = mw / (range * 2);
+  const center = [mx + mw/2, my + mh/2];
+  // roads: show grid lines
+  ctx.strokeStyle = '#9E9E9E'; ctx.lineWidth = 1;
+  for (let gx = Math.floor((car.x - range) / BLOCK); gx <= Math.ceil((car.x + range)/BLOCK); gx++) {
+    const px = center[0] + (gx*BLOCK - car.x)*scale;
+    ctx.beginPath(); ctx.moveTo(px, my); ctx.lineTo(px, my+mh); ctx.stroke();
+  }
+  for (let gy = Math.floor((car.y - range) / BLOCK); gy <= Math.ceil((car.y + range)/BLOCK); gy++) {
+    const py = center[1] + (gy*BLOCK - car.y)*scale;
+    ctx.beginPath(); ctx.moveTo(mx, py); ctx.lineTo(mx+mw, py); ctx.stroke();
+  }
+  // landmarks (only if within range)
+  const lms = [
+    { name:'T', color:'#E53935', x: 0*BLOCK + BLOCK/2, y: -1*BLOCK + BLOCK/2 },
+    { name:'H', color:'#FFD700', x: -1*BLOCK + BLOCK/2, y: 1*BLOCK + BLOCK/2 },
+    { name:'S', color:'#FF7043', x: 1*BLOCK + BLOCK/2, y: 1*BLOCK + BLOCK/2 },
+  ];
+  for (const l of lms) {
+    const dx = l.x - car.x, dy = l.y - car.y;
+    if (Math.abs(dx) > range || Math.abs(dy) > range) continue;
+    ctx.fillStyle = l.color;
+    ctx.fillRect(center[0] + dx*scale - 4, center[1] + dy*scale - 4, 8, 8);
+  }
+  // car dot
+  ctx.fillStyle = '#4FC3F7';
+  ctx.fillRect(center[0]-3, center[1]-3, 6, 6);
+  ctx.fillStyle = 'white'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Radar', center[0], my + mh - 6);
+}
+
+// ===== Main loop =====
+function loop() {
+  updateCar();
+  checkPickups();
+
+  drawSky();
+  drawSun();
+  drawRainbow();
+  drawGround();
+
+  const chunks = visibleChunks();
+  drawRoads();
+  drawDecos(chunks);
+  drawBuildings(chunks);
+  drawLandmarks(chunks);
+  drawVehicles(chunks);
+  drawBuilders(chunks);
+  drawCar();
+  drawRain();
+  drawSnow();
+  drawArrows();
+  drawRadar();
+
+  requestAnimationFrame(loop);
+}
+
+// Nudge car to start on a clear road tile
+car.x = 0 + BLOCK/2;
+car.y = 0 + BLOCK/2;
+// put car in center of an open intersection area actually - on a road
+car.x = 0;
+car.y = 0;
+
+showMessage('🚗 Infinite city! Drive anywhere. Space to brake.');
+loop();
+</script>
+</body>
+</html>

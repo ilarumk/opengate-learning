@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Big Construction Site</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #000; overflow: hidden; height: 100vh; }
+  canvas { display: block; background: #8B7355; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  #title {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    color: white; font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, #FF6F00, #FFC107, #FF6F00);
+    padding: 10px 24px; border-radius: 14px; pointer-events: none;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  #ui {
+    position: absolute; top: 20px; left: 20px;
+    color: white; font-size: 14px;
+    background: rgba(0,0,0,0.65); padding: 14px 18px;
+    border-radius: 12px; pointer-events: none; line-height: 1.7;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6); max-width: 300px;
+  }
+  #ui b { color: #FFD54F; }
+  #ui kbd {
+    background: #37474F; padding: 2px 7px; border-radius: 4px;
+    font-family: monospace; color: white; font-size: 12px;
+    border: 1px solid #546E7A;
+  }
+  #vehicle-select {
+    position: absolute; bottom: 20px; left: 20px;
+    display: flex; gap: 8px;
+  }
+  #weather-btn, #paint-btn, #color-btn, #clear-btn {
+    position: absolute; top: 20px;
+    background: rgba(255,255,255,0.95); border: none;
+    padding: 10px 14px; border-radius: 12px; font-size: 14px;
+    cursor: pointer; font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  #weather-btn { right: 20px; }
+  #paint-btn   { right: 160px; }
+  #color-btn   { right: 270px; width: 46px; padding: 10px 0; }
+  #clear-btn   { right: 330px; font-size: 12px; padding: 10px 10px; }
+  #paint-btn.on { background: #FFEB3B; }
+  #weather-btn:hover, #paint-btn:hover, #color-btn:hover, #clear-btn:hover { transform: translateY(-2px); }
+  canvas.grabbing { cursor: grabbing; }
+  canvas.grab { cursor: grab; }
+  .veh-btn {
+    background: rgba(255,255,255,0.95); border: 3px solid transparent;
+    padding: 6px 8px; border-radius: 10px; font-size: 11px;
+    cursor: pointer; font-weight: 600; min-width: 74px;
+    text-align: center; transition: all 0.15s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  }
+  .veh-btn.active { border-color: #FF6F00; background: #FFE0B2; transform: translateY(-4px); }
+  .veh-btn .num { display: block; font-size: 16px; color: #FF6F00; }
+  #status {
+    position: absolute; bottom: 20px; right: 20px;
+    color: white; background: rgba(0,0,0,0.65);
+    padding: 12px 18px; border-radius: 12px; pointer-events: none;
+    line-height: 1.6; min-width: 180px;
+  }
+  #status b { color: #FFD54F; }
+  #message {
+    position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+    color: white; font-size: 17px;
+    background: rgba(0,0,0,0.78); padding: 12px 22px; border-radius: 12px;
+    opacity: 0; transition: opacity 0.4s; pointer-events: none; text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="title">🚧 Big Construction Site 🚧</div>
+<button id="weather-btn" onclick="cycleWeather()">☀️ Sunny</button>
+<button id="paint-btn" onclick="togglePaint()">🎨 Paint: off</button>
+<button id="color-btn" onclick="cyclePaintColor()" style="background:#E91E63"></button>
+<button id="clear-btn" onclick="clearPaint()">✕ clear</button>
+<div id="ui">
+  <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> drive · <kbd>Space</kbd> pick up / drop<br>
+  <kbd>1</kbd>–<kbd>8</kbd> switch vehicle · <kbd>P</kbd> paint<br>
+  🖱️ drag to move the map · Build 3 towers!
+</div>
+<div id="status">
+  🏗️ Towers: <b><span id="towers">0 / 0 / 0</span></b><br>
+  🧰 Holding: <b><span id="holding">nothing</span></b>
+</div>
+<div id="vehicle-select">
+  <button class="veh-btn active" data-v="0" onclick="setVehicle(0)"><span class="num">1</span>🚜 Bulldozer</button>
+  <button class="veh-btn" data-v="1" onclick="setVehicle(1)"><span class="num">2</span>⛏️ Digger</button>
+  <button class="veh-btn" data-v="2" onclick="setVehicle(2)"><span class="num">3</span>⛏️ Digger 2</button>
+  <button class="veh-btn" data-v="3" onclick="setVehicle(3)"><span class="num">4</span>🚛 Dump Truck</button>
+  <button class="veh-btn" data-v="4" onclick="setVehicle(4)"><span class="num">5</span>🚛 Dump Truck 2</button>
+  <button class="veh-btn" data-v="5" onclick="setVehicle(5)"><span class="num">6</span>🧱 Mixer</button>
+  <button class="veh-btn" data-v="6" onclick="setVehicle(6)"><span class="num">7</span>🧱 Mixer 2</button>
+  <button class="veh-btn" data-v="7" onclick="setVehicle(7)"><span class="num">8</span>🏗️ Crane</button>
+</div>
+<div id="message"></div>
+<canvas id="game"></canvas>
+
+<script>
+// ===== Canvas =====
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); addEventListener('resize', resize);
+
+// ===== World =====
+const WORLD = { w: 3400, h: 2400 };
+
+// ===== Road ring (AI traffic drives here, painted lanes on the ground) =====
+// Rectangular loop with inner margin around the construction zone.
+const ROAD = {
+  left:   260,
+  right:  WORLD.w - 260,
+  top:    260,
+  bottom: WORLD.h - 260,
+  width:  110,
+};
+// A road polyline points list (clockwise), used by NPCs.
+const ROAD_PATH = [
+  { x: ROAD.left,  y: ROAD.top },
+  { x: ROAD.right, y: ROAD.top },
+  { x: ROAD.right, y: ROAD.bottom },
+  { x: ROAD.left,  y: ROAD.bottom },
+];
+function onRoadBox(x, y) {
+  // Returns true if (x,y) is within the road ring (outer edge).
+  const hw = ROAD.width / 2;
+  const inHorizTop    = y > ROAD.top - hw    && y < ROAD.top + hw    && x > ROAD.left - hw && x < ROAD.right + hw;
+  const inHorizBottom = y > ROAD.bottom - hw && y < ROAD.bottom + hw && x > ROAD.left - hw && x < ROAD.right + hw;
+  const inVertLeft    = x > ROAD.left - hw   && x < ROAD.left + hw   && y > ROAD.top - hw  && y < ROAD.bottom + hw;
+  const inVertRight   = x > ROAD.right - hw  && x < ROAD.right + hw  && y > ROAD.top - hw  && y < ROAD.bottom + hw;
+  return inHorizTop || inHorizBottom || inVertLeft || inVertRight;
+}
+
+// ===== Items on the ground =====
+// Each item: { id, type: 'dirt'|'block'|'brick'|'plank', x, y, carriedBy, placed }
+let nextItemId = 1;
+const items = [];
+function addItem(type, x, y) {
+  const it = { id: nextItemId++, type, x, y, carriedBy: null, placed: false };
+  items.push(it);
+  return it;
+}
+
+// ===== Dirt piles (become items when dug) =====
+const dirtPiles = [];
+function spawnDirtPile() {
+  let x, y, tries = 0;
+  do {
+    x = 200 + Math.random()*(WORLD.w - 400);
+    y = 200 + Math.random()*(WORLD.h - 400);
+    tries++;
+  } while (dirtPilesNearFoundation(x, y) && tries < 15);
+  dirtPiles.push({ id: 'p' + nextItemId++, x, y, size: 36 + Math.random()*10, alive: true });
+}
+function dirtPilesNearFoundation(x, y) {
+  for (const f of foundations) if (Math.hypot(x - f.x, y - f.y) < 200) return true;
+  return false;
+}
+
+// ===== Foundations (3 build sites) =====
+const foundations = [
+  { id: 1, x: WORLD.w * 0.32, y: WORLD.h * 0.32, cement: 0, floors: 0, materials: [] },
+  { id: 2, x: WORLD.w * 0.68, y: WORLD.h * 0.35, cement: 0, floors: 0, materials: [] },
+  { id: 3, x: WORLD.w * 0.50, y: WORLD.h * 0.68, cement: 0, floors: 0, materials: [] },
+];
+
+// ===== Houses (colorful residential block along one edge) =====
+const HOUSES = [];
+(function seedHouses() {
+  // Row along top
+  for (let i = 0; i < 6; i++) {
+    HOUSES.push({ x: 400 + i*440, y: 130, w: 160, h: 100, color: ['#F06292','#64B5F6','#FFD54F','#81C784','#BA68C8','#FF8A65'][i], roof: ['#AD1457','#0D47A1','#F57F17','#1B5E20','#4A148C','#BF360C'][i] });
+  }
+  // Row along bottom
+  for (let i = 0; i < 6; i++) {
+    HOUSES.push({ x: 400 + i*440, y: WORLD.h - 130, w: 160, h: 100, color: ['#4DB6AC','#FFB74D','#9575CD','#E57373','#7986CB','#A1887F'][i], roof: ['#004D40','#E65100','#311B92','#B71C1C','#1A237E','#3E2723'][i] });
+  }
+  // Row along left
+  for (let i = 0; i < 4; i++) {
+    HOUSES.push({ x: 130, y: 480 + i*360, w: 140, h: 110, color: ['#AED581','#4FC3F7','#FFB300','#F48FB1'][i], roof: ['#33691E','#01579B','#E65100','#880E4F'][i] });
+  }
+  // Row along right
+  for (let i = 0; i < 4; i++) {
+    HOUSES.push({ x: WORLD.w - 130, y: 480 + i*360, w: 140, h: 110, color: ['#DCE775','#4DD0E1','#FF8A80','#CE93D8'][i], roof: ['#827717','#006064','#B71C1C','#4A148C'][i] });
+  }
+})();
+
+// ===== Paint splashes (colorful decorative dots across the site) =====
+const PAINT_SPLATS = [];
+(function seedPaint() {
+  const colors = ['#E91E63','#FFEB3B','#00BCD4','#8BC34A','#FF5722','#9C27B0','#03A9F4'];
+  for (let i = 0; i < 45; i++) {
+    PAINT_SPLATS.push({
+      x: 360 + Math.random() * (WORLD.w - 720),
+      y: 360 + Math.random() * (WORLD.h - 720),
+      r: 12 + Math.random()*18,
+      c: colors[Math.floor(Math.random()*colors.length)],
+    });
+  }
+})();
+
+// ===== NPC traffic (driving on the road ring) =====
+// types: bus, police, roadster
+const NPCS = [];
+(function seedNpcs() {
+  const colors = {
+    bus:     ['#FFC107','#FFA000'],
+    police:  ['#1565C0','#0D47A1'],
+    roadster:['#E53935','#43A047','#FDD835','#AB47BC','#26A69A','#FF7043'],
+  };
+  const defs = [
+    { type:'bus',      count:2, w:90, h:38, speed:1.2 },
+    { type:'police',   count:3, w:66, h:34, speed:2.0 },
+    { type:'roadster', count:5, w:60, h:30, speed:1.7 },
+  ];
+  const perim = 2*((ROAD.right-ROAD.left) + (ROAD.bottom-ROAD.top));
+  let seen = 0;
+  for (const d of defs) {
+    for (let i = 0; i < d.count; i++) {
+      seen++;
+      const t = (seen / 11) * perim;
+      const clr = d.type === 'roadster' ? colors.roadster[i % colors.roadster.length]
+                : d.type === 'bus'      ? colors.bus[i % 2]
+                :                         colors.police[i % 2];
+      NPCS.push({
+        type: d.type,
+        w: d.w, h: d.h,
+        baseSpeed: d.speed * (0.9 + Math.random()*0.25),
+        speed: d.speed,
+        color: clr,
+        t: t,            // distance along the loop
+        ...npcPosFromT(t),
+        angle: 0,
+        lightPhase: Math.random()*Math.PI*2,
+      });
+    }
+  }
+})();
+function loopPerim() {
+  return 2 * ((ROAD.right - ROAD.left) + (ROAD.bottom - ROAD.top));
+}
+function npcPosFromT(t) {
+  const wSeg = ROAD.right - ROAD.left;
+  const hSeg = ROAD.bottom - ROAD.top;
+  const perim = 2 * (wSeg + hSeg);
+  t = ((t % perim) + perim) % perim;
+  const offset = ROAD.width * 0.25; // drive in right lane of ring
+  if (t < wSeg) {                          // top: left → right
+    return { x: ROAD.left + t, y: ROAD.top + offset, angle: Math.PI/2 };
+  } else if (t < wSeg + hSeg) {            // right: top → bottom
+    return { x: ROAD.right - offset, y: ROAD.top + (t - wSeg), angle: Math.PI };
+  } else if (t < 2*wSeg + hSeg) {          // bottom: right → left
+    return { x: ROAD.right - (t - wSeg - hSeg), y: ROAD.bottom - offset, angle: -Math.PI/2 };
+  } else {                                 // left: bottom → top
+    return { x: ROAD.left + offset, y: ROAD.bottom - (t - 2*wSeg - hSeg), angle: 0 };
+  }
+}
+function updateNpcs() {
+  const perim = loopPerim();
+  // Sort by t to detect "car in front" to avoid collisions
+  NPCS.sort((a, b) => a.t - b.t);
+  for (let i = 0; i < NPCS.length; i++) {
+    const n = NPCS[i];
+    const ahead = NPCS[(i + 1) % NPCS.length];
+    let gap = ahead.t - n.t;
+    if (gap <= 0) gap += perim;
+    // Slow down when close to the car ahead
+    const desired = gap < 90 ? n.baseSpeed * 0.2
+                  : gap < 160 ? n.baseSpeed * 0.6
+                  : n.baseSpeed;
+    n.speed += (desired - n.speed) * 0.1;
+    n.t = (n.t + n.speed) % perim;
+    const p = npcPosFromT(n.t);
+    n.x = p.x; n.y = p.y; n.angle = p.angle;
+    n.lightPhase += 0.2;
+  }
+}
+
+// ===== Vehicles =====
+// Parking row, inside the road ring, across the middle-bottom of the site.
+const PARK_Y = WORLD.h * 0.50;
+const VEHICLES = [
+  { type:'bulldozer', label:'Bulldozer',      x: 500,  y: PARK_Y, angle:0, speed:0, maxSpeed:3.5, accel:0.12, turn:0.032, w: 72, h: 50, holding:null },
+  { type:'digger',    label:'Digger',         x: 640,  y: PARK_Y, angle:0, speed:0, maxSpeed:3.2, accel:0.11, turn:0.034, w: 72, h: 52, holding:null },
+  { type:'digger',    label:'Digger 2',       x: 780,  y: PARK_Y, angle:0, speed:0, maxSpeed:3.2, accel:0.11, turn:0.034, w: 72, h: 52, holding:null },
+  { type:'dumptruck', label:'Dump Truck',     x: 920,  y: PARK_Y, angle:0, speed:0, maxSpeed:4.2, accel:0.14, turn:0.030, w: 84, h: 54, holding:null, bed: [] },
+  { type:'dumptruck', label:'Dump Truck 2',   x: 1070, y: PARK_Y, angle:0, speed:0, maxSpeed:4.2, accel:0.14, turn:0.030, w: 84, h: 54, holding:null, bed: [] },
+  { type:'mixer',     label:'Cement Mixer',   x: 1220, y: PARK_Y, angle:0, speed:0, maxSpeed:3.8, accel:0.13, turn:0.031, w: 84, h: 54, holding:null },
+  { type:'mixer',     label:'Cement Mixer 2', x: 1370, y: PARK_Y, angle:0, speed:0, maxSpeed:3.8, accel:0.13, turn:0.031, w: 84, h: 54, holding:null },
+  { type:'crane',     label:'Crane',          x: 1520, y: PARK_Y, angle:0, speed:0, maxSpeed:3.0, accel:0.10, turn:0.028, w: 82, h: 56, holding:null },
+];
+let activeIdx = 0;
+function setVehicle(i) {
+  activeIdx = i;
+  document.querySelectorAll('.veh-btn').forEach(b => b.classList.toggle('active', +b.dataset.v === i));
+  showMessage('Now driving: ' + VEHICLES[i].label);
+}
+
+// ===== Particles =====
+const particles = [];
+function addParticles(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = speed * (0.3 + Math.random() * 0.8);
+    particles.push({
+      x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+      life: 30 + Math.random()*20, age: 0,
+      size: 2 + Math.random()*3, color
+    });
+  }
+}
+
+// ===== Input =====
+const keys = {};
+let spaceHeld = false, spacePressed = false;
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (k === '1') setVehicle(0);
+  else if (k === '2') setVehicle(1);
+  else if (k === '3') setVehicle(2);
+  else if (k === '4') setVehicle(3);
+  else if (k === '5') setVehicle(4);
+  else if (k === '6') setVehicle(5);
+  else if (k === '7') setVehicle(6);
+  else if (k === '8') setVehicle(7);
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+});
+addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+function updateSpace() {
+  const pressed = !!keys[' '];
+  spacePressed = pressed && !spaceHeld;
+  spaceHeld = pressed;
+}
+
+// ===== Camera =====
+const cam = { x: 0, y: 0, freeUntil: 0 };
+// When freeUntil > Date.now(), camera doesn't snap to the active vehicle.
+function cameraFollowsVehicle() { return Date.now() > cam.freeUntil; }
+
+// ===== Paint system =====
+// Brush strokes laid down as the vehicle drives.
+const PAINT_COLORS = ['#E91E63','#FFC107','#00BCD4','#4CAF50','#9C27B0','#F44336','#FF9800','#3F51B5'];
+let paintOn = false;
+let paintColorIdx = 0;
+const paintStrokes = []; // { x, y, r, c }
+function togglePaint() {
+  paintOn = !paintOn;
+  const btn = document.getElementById('paint-btn');
+  btn.textContent = paintOn ? '🎨 Paint: ON' : '🎨 Paint: off';
+  btn.classList.toggle('on', paintOn);
+}
+function cyclePaintColor() {
+  paintColorIdx = (paintColorIdx + 1) % PAINT_COLORS.length;
+  document.getElementById('color-btn').style.background = PAINT_COLORS[paintColorIdx];
+}
+function clearPaint() { paintStrokes.length = 0; }
+
+// ===== Mouse drag to pan the camera =====
+let drag = null;
+addEventListener('mousedown', e => {
+  // Only left button, only when clicking the canvas (not buttons)
+  if (e.button !== 0 || e.target.tagName === 'BUTTON') return;
+  drag = { x: e.clientX, y: e.clientY, camX: cam.x, camY: cam.y };
+  document.getElementById('game').classList.add('grabbing');
+});
+addEventListener('mousemove', e => {
+  if (!drag) return;
+  cam.x = drag.camX - (e.clientX - drag.x);
+  cam.y = drag.camY - (e.clientY - drag.y);
+  cam.x = Math.max(0, Math.min(Math.max(0, WORLD.w - W), cam.x));
+  cam.y = Math.max(0, Math.min(Math.max(0, WORLD.h - H), cam.y));
+  cam.freeUntil = Date.now() + 2500; // let the user look around for 2.5s after release
+});
+addEventListener('mouseup', () => {
+  if (!drag) return;
+  drag = null;
+  document.getElementById('game').classList.remove('grabbing');
+});
+// Touch drag (for trackpad / tablet fun)
+addEventListener('touchstart', e => {
+  if (e.target.tagName === 'BUTTON') return;
+  const t = e.touches[0];
+  drag = { x: t.clientX, y: t.clientY, camX: cam.x, camY: cam.y };
+}, { passive: true });
+addEventListener('touchmove', e => {
+  if (!drag) return;
+  const t = e.touches[0];
+  cam.x = drag.camX - (t.clientX - drag.x);
+  cam.y = drag.camY - (t.clientY - drag.y);
+  cam.x = Math.max(0, Math.min(Math.max(0, WORLD.w - W), cam.x));
+  cam.y = Math.max(0, Math.min(Math.max(0, WORLD.h - H), cam.y));
+  cam.freeUntil = Date.now() + 2500;
+}, { passive: true });
+addEventListener('touchend', () => { drag = null; });
+
+// keyboard hook for P
+addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'p') togglePaint();
+});
+
+// ===== Weather =====
+const WEATHERS = [
+  { id: 'sun',     label: '☀️ Sunny',    tint: null,                       overlay: null },
+  { id: 'rain',    label: '🌧️ Rainy',    tint: 'rgba(40, 55, 80, 0.25)',   overlay: 'rain' },
+  { id: 'snow',    label: '❄️ Snowy',    tint: 'rgba(230, 240, 255, 0.35)',overlay: 'snow' },
+  { id: 'rainbow', label: '🌈 Rainbow',  tint: 'rgba(255, 230, 180, 0.18)',overlay: 'rainbow' },
+];
+let weatherIdx = 0;
+const weatherDrops = [];
+function cycleWeather() {
+  weatherIdx = (weatherIdx + 1) % WEATHERS.length;
+  document.getElementById('weather-btn').textContent = WEATHERS[weatherIdx].label;
+  weatherDrops.length = 0;
+}
+function seedWeather() {
+  const mode = WEATHERS[weatherIdx].overlay;
+  if (!mode || mode === 'rainbow') return;
+  const target = mode === 'rain' ? 180 : 140;
+  while (weatherDrops.length < target) {
+    weatherDrops.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: mode === 'rain' ? -3 : -0.4 + Math.random()*0.8,
+      vy: mode === 'rain' ? 14 + Math.random()*6 : 1 + Math.random()*1.5,
+      r: mode === 'snow' ? 1.5 + Math.random()*2.5 : 0,
+      len: mode === 'rain' ? 10 + Math.random()*8 : 0,
+      sway: Math.random() * Math.PI * 2,
+    });
+  }
+}
+function updateWeather() {
+  const mode = WEATHERS[weatherIdx].overlay;
+  if (!mode || mode === 'rainbow') { weatherDrops.length = 0; return; }
+  seedWeather();
+  for (const d of weatherDrops) {
+    if (mode === 'snow') {
+      d.sway += 0.04;
+      d.x += Math.sin(d.sway) * 0.6 + d.vx;
+    } else {
+      d.x += d.vx;
+    }
+    d.y += d.vy;
+    if (d.y > H + 10 || d.x < -20 || d.x > W + 20) {
+      d.x = Math.random() * W;
+      d.y = -10;
+    }
+  }
+}
+function drawWeather() {
+  const w = WEATHERS[weatherIdx];
+  if (w.tint) {
+    ctx.fillStyle = w.tint;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (w.overlay === 'rain') {
+    ctx.strokeStyle = 'rgba(180, 210, 255, 0.75)';
+    ctx.lineWidth = 1.5;
+    for (const d of weatherDrops) {
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x + d.vx*0.6, d.y + d.len);
+      ctx.stroke();
+    }
+  } else if (w.overlay === 'snow') {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    for (const d of weatherDrops) {
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+  } else if (w.overlay === 'rainbow') {
+    const bands = ['#ff4848', '#ff9c2b', '#ffe34a', '#62d85a', '#3fb8ff', '#8a5bff'];
+    const cx = W * 0.5, cy = H + 80, rMax = Math.min(W, H) * 0.9;
+    ctx.lineWidth = 18;
+    for (let i = 0; i < bands.length; i++) {
+      ctx.strokeStyle = bands[i];
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rMax - i*18, Math.PI*1.1, Math.PI*1.9);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // warm sun glow top-right
+    const g = ctx.createRadialGradient(W*0.85, H*0.18, 0, W*0.85, H*0.18, 220);
+    g.addColorStop(0, 'rgba(255, 240, 180, 0.6)');
+    g.addColorStop(1, 'rgba(255, 240, 180, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ===== Messages =====
+function showMessage(text) {
+  const m = document.getElementById('message');
+  m.textContent = text; m.style.opacity = 1;
+  clearTimeout(m._t); m._t = setTimeout(() => m.style.opacity = 0, 2500);
+}
+
+// ===== Helpers =====
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// The "tool point" for a vehicle - where it picks up / drops things
+function toolPoint(v) {
+  const offset = (v.type === 'crane') ? 70 : 40;
+  return {
+    x: v.x + Math.sin(v.angle) * offset,
+    y: v.y - Math.cos(v.angle) * offset,
+  };
+}
+
+// Find nearest pickable item to vehicle's tool point
+function nearestItem(v, maxDist = 55) {
+  const tp = toolPoint(v);
+  let best = null, bd = maxDist;
+  for (const it of items) {
+    if (it.placed || it.carriedBy) continue;
+    const d = Math.hypot(tp.x - it.x, tp.y - it.y);
+    if (d < bd) { bd = d; best = it; }
+  }
+  return best;
+}
+function nearestDirtPile(v, maxDist = 70) {
+  const tp = toolPoint(v);
+  let best = null, bd = maxDist;
+  for (const p of dirtPiles) {
+    if (!p.alive) continue;
+    const d = Math.hypot(tp.x - p.x, tp.y - p.y);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+function nearestFoundation(v, maxDist = 140) {
+  let best = null, bd = maxDist;
+  for (const f of foundations) {
+    const d = Math.hypot(v.x - f.x, v.y - f.y);
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+
+// Update status UI
+function updateStatus() {
+  document.getElementById('towers').textContent = foundations.map(f => f.floors).join(' / ');
+  const v = VEHICLES[activeIdx];
+  let h = 'nothing';
+  if (v.holding) {
+    h = '1 ' + v.holding.type;
+  } else if (v.type === 'dumptruck' && v.bed.length > 0) {
+    h = v.bed.length + ' on bed';
+  }
+  document.getElementById('holding').textContent = h;
+}
+
+// ===== Update =====
+function updateActive() {
+  const v = VEHICLES[activeIdx];
+
+  // World-direction controls: arrows map to screen direction.
+  // The vehicle turns itself to face wherever you're going. Much less confusing for kids.
+  const kUp    = keys['arrowup']    || keys['w'];
+  const kDown  = keys['arrowdown']  || keys['s'];
+  const kLeft  = keys['arrowleft']  || keys['a'];
+  const kRight = keys['arrowright'] || keys['d'];
+
+  let dx = 0, dy = 0;
+  if (kLeft)  dx -= 1;
+  if (kRight) dx += 1;
+  if (kUp)    dy -= 1;
+  if (kDown)  dy += 1;
+
+  if (dx !== 0 || dy !== 0) {
+    // Normalize diagonal so 45° isn't faster than cardinal
+    const len = Math.hypot(dx, dy);
+    dx /= len; dy /= len;
+
+    // Aim the vehicle toward the movement direction (sprite forward = angle 0 means +Y up)
+    // movement angle: atan2(dx, -dy) so up=0, right=PI/2, down=PI, left=-PI/2
+    const targetAngle = Math.atan2(dx, -dy);
+    // Smoothly rotate toward target (short-way)
+    let diff = targetAngle - v.angle;
+    while (diff > Math.PI)  diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const turnStep = v.turn * 2.2;  // responsive auto-rotate
+    if (Math.abs(diff) < turnStep) v.angle = targetAngle;
+    else v.angle += Math.sign(diff) * turnStep;
+
+    // Accelerate forward
+    v.speed = Math.min(v.maxSpeed, v.speed + v.accel);
+    // Move along world direction (not vehicle-facing) — scales with how aligned we are
+    const alignment = Math.max(0.35, Math.cos(diff)); // slower while mid-turn
+    v.x += dx * v.speed * alignment;
+    v.y += dy * v.speed * alignment;
+  } else {
+    // Engine brake — construction vehicles don't coast
+    v.speed = Math.max(0, v.speed - v.accel * 1.8);
+  }
+
+  v.x = Math.max(40, Math.min(WORLD.w - 40, v.x));
+  v.y = Math.max(40, Math.min(WORLD.h - 40, v.y));
+
+  // Paint stroke trail (only when paint is ON and actually moving)
+  if (paintOn && v.speed > 0.3) {
+    paintStrokes.push({
+      x: v.x - Math.sin(v.angle) * 20,
+      y: v.y + Math.cos(v.angle) * 20,
+      r: 22 + Math.random()*4,
+      c: PAINT_COLORS[paintColorIdx],
+    });
+    if (paintStrokes.length > 2500) paintStrokes.splice(0, paintStrokes.length - 2500);
+  }
+
+  // Any arrow key press re-engages camera-follow
+  if (kUp || kDown || kLeft || kRight) cam.freeUntil = 0;
+
+  if (cameraFollowsVehicle()) {
+    cam.x = v.x - W/2;
+    cam.y = v.y - H/2;
+    cam.x = Math.max(0, Math.min(Math.max(0, WORLD.w - W), cam.x));
+    cam.y = Math.max(0, Math.min(Math.max(0, WORLD.h - H), cam.y));
+  }
+
+  // Carry items with the vehicle
+  if (v.holding) {
+    const tp = toolPoint(v);
+    v.holding.x = tp.x;
+    v.holding.y = tp.y;
+  }
+  if (v.type === 'dumptruck') {
+    for (let i = 0; i < v.bed.length; i++) {
+      const it = v.bed[i];
+      it.x = v.x - Math.sin(v.angle) * (10 + i*6);
+      it.y = v.y + Math.cos(v.angle) * (10 + i*6);
+    }
+  }
+
+  if (spacePressed) doAction(v);
+}
+
+function doAction(v) {
+  const tp = toolPoint(v);
+
+  if (v.type === 'bulldozer') {
+    const pile = nearestDirtPile(v, 80);
+    if (pile) {
+      pile.x += Math.sin(v.angle) * 35;
+      pile.y -= Math.cos(v.angle) * 35;
+      pile.x = Math.max(150, Math.min(WORLD.w - 150, pile.x));
+      pile.y = Math.max(150, Math.min(WORLD.h - 150, pile.y));
+      addParticles(pile.x, pile.y, '#8D6E63', 10, 2);
+      showMessage('🚜 Pushed the dirt pile!');
+    } else showMessage('Drive up to a dirt pile 🚜');
+  }
+
+  else if (v.type === 'digger') {
+    if (v.holding) {
+      // Drop what's in the bucket where the arm points
+      v.holding.carriedBy = null;
+      v.holding.x = tp.x; v.holding.y = tp.y;
+      showMessage('⬇️ Dropped ' + v.holding.type + '!');
+      addParticles(tp.x, tp.y, '#8D6E63', 8, 2);
+      v.holding = null;
+    } else {
+      // Pick up whatever is closest - dirt pile turns into a block
+      const pile = nearestDirtPile(v, 85);
+      const item = nearestItem(v, 60);
+      if (pile && (!item || Math.hypot(tp.x - pile.x, tp.y - pile.y) <= Math.hypot(tp.x - item.x, tp.y - item.y))) {
+        pile.alive = false;
+        setTimeout(spawnDirtPile, 4500);
+        const newBlock = addItem('block', tp.x, tp.y);
+        newBlock.carriedBy = v;
+        v.holding = newBlock;
+        addParticles(pile.x, pile.y, '#8D6E63', 18, 4);
+        showMessage('⛏️ Dug up a concrete block!');
+      } else if (item) {
+        item.carriedBy = v;
+        v.holding = item;
+        showMessage('🪝 Picked up ' + item.type + '!');
+      } else {
+        showMessage('Drive closer to a dirt pile or item');
+      }
+    }
+  }
+
+  else if (v.type === 'dumptruck') {
+    const fnd = nearestFoundation(v, 140);
+    if (fnd && v.bed.length > 0) {
+      // Try to place a floor
+      const topItem = v.bed[v.bed.length - 1];
+      if (fnd.cement < 100) {
+        showMessage('Pour cement on this foundation first 🧱');
+      } else if (fnd.floors >= 10) {
+        showMessage('Tower #' + fnd.id + ' is full! 🎉');
+      } else if (topItem.type !== 'block' && topItem.type !== 'brick') {
+        showMessage('Only blocks / bricks build towers');
+      } else {
+        fnd.floors++;
+        fnd.materials.push(topItem.type);
+        const idx = items.indexOf(topItem);
+        if (idx >= 0) items.splice(idx, 1);
+        v.bed.pop();
+        addParticles(fnd.x, fnd.y - fnd.floors*26, '#FFD54F', 14, 3);
+        showMessage('🏗️ Tower #' + fnd.id + ' — floor ' + fnd.floors + '!');
+        if (fnd.floors === 10) setTimeout(() => showMessage('🎉 Tower #' + fnd.id + ' complete!'), 500);
+      }
+      return;
+    }
+    // Otherwise: try to load / unload
+    const item = nearestItem(v, 60);
+    if (item && v.bed.length < 3) {
+      item.carriedBy = v;
+      v.bed.push(item);
+      showMessage('🚛 Loaded ' + item.type + ' (' + v.bed.length + '/3)');
+    } else if (v.bed.length > 0) {
+      // Unload one here
+      const it = v.bed.pop();
+      it.carriedBy = null;
+      it.x = v.x - Math.sin(v.angle) * 26;
+      it.y = v.y + Math.cos(v.angle) * 26;
+      showMessage('📦 Unloaded a ' + it.type);
+    } else {
+      showMessage('Drive up to a block / brick to load');
+    }
+  }
+
+  else if (v.type === 'mixer') {
+    const fnd = nearestFoundation(v, 150);
+    if (fnd) {
+      if (fnd.cement < 100) {
+        fnd.cement = Math.min(100, fnd.cement + 25);
+        addParticles(fnd.x, fnd.y + 40, '#B0BEC5', 14, 2);
+        showMessage('🧱 Cement #' + fnd.id + ' → ' + fnd.cement + '%');
+        if (fnd.cement === 100) showMessage('✅ Foundation #' + fnd.id + ' ready! Bring blocks!');
+      } else {
+        showMessage('Foundation #' + fnd.id + ' already done ✅');
+      }
+    } else {
+      showMessage('Drive near a foundation to pour cement');
+    }
+  }
+
+  else if (v.type === 'crane') {
+    if (v.holding) {
+      // If near a foundation, try to place
+      const fnd = nearestFoundation(v, 170);
+      if (fnd && fnd.cement >= 100 && fnd.floors < 10 &&
+          (v.holding.type === 'block' || v.holding.type === 'brick')) {
+        fnd.floors++;
+        fnd.materials.push(v.holding.type);
+        const idx = items.indexOf(v.holding);
+        if (idx >= 0) items.splice(idx, 1);
+        v.holding = null;
+        addParticles(fnd.x, fnd.y - fnd.floors*26, '#FFD54F', 18, 4);
+        showMessage('🏗️ Crane placed floor ' + fnd.floors + ' on Tower #' + fnd.id + '!');
+        if (fnd.floors === 10) setTimeout(() => showMessage('🎉 Tower #' + fnd.id + ' complete!'), 500);
+      } else {
+        // Drop wherever
+        v.holding.carriedBy = null;
+        v.holding.x = tp.x; v.holding.y = tp.y;
+        showMessage('⬇️ Crane dropped ' + v.holding.type);
+        v.holding = null;
+      }
+    } else {
+      const item = nearestItem(v, 85);
+      if (item) {
+        item.carriedBy = v;
+        v.holding = item;
+        showMessage('🏗️ Crane lifted a ' + item.type + '!');
+      } else {
+        showMessage('Swing the arm near an item to lift');
+      }
+    }
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.age++;
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.vy += 0.08;
+    if (p.age > p.life) particles.splice(i, 1);
+  }
+}
+
+// ===== Drawing =====
+function w2s(x, y) { return [x - cam.x, y - cam.y]; }
+
+function drawGround() {
+  const [sx, sy] = w2s(0, 0);
+  ctx.fillStyle = '#A1887F';
+  ctx.fillRect(sx, sy, WORLD.w, WORLD.h);
+  ctx.fillStyle = '#8D6E63';
+  const tile = 60;
+  const x0 = Math.floor(cam.x / tile) * tile;
+  const y0 = Math.floor(cam.y / tile) * tile;
+  for (let x = x0; x < cam.x + W + tile; x += tile) {
+    for (let y = y0; y < cam.y + H + tile; y += tile) {
+      const seed = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      const r = (seed % 100) / 100;
+      if (r < 0.4) {
+        const [ssx, ssy] = w2s(x + (seed % 47), y + ((seed >> 8) % 43));
+        ctx.fillRect(ssx, ssy, 3, 3);
+      }
+    }
+  }
+  ctx.strokeStyle = 'rgba(60,40,20,0.22)';
+  ctx.lineWidth = 6; ctx.setLineDash([18, 10]);
+  for (let i = 0; i < 8; i++) {
+    const y = 200 + i*200;
+    const [, sy2] = w2s(0, y);
+    ctx.beginPath(); ctx.moveTo(sx, sy2); ctx.lineTo(sx + WORLD.w, sy2); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function drawRoads() {
+  const hw = ROAD.width / 2;
+  ctx.fillStyle = '#37474F';
+  const [tx, ty] = w2s(ROAD.left - hw, ROAD.top - hw);
+  const [bx, by] = w2s(ROAD.left - hw, ROAD.bottom - hw);
+  const wRoad = (ROAD.right - ROAD.left) + ROAD.width;
+  const hRoad = (ROAD.bottom - ROAD.top) + ROAD.width;
+  // Top
+  ctx.fillRect(tx, ty, wRoad, ROAD.width);
+  // Bottom
+  ctx.fillRect(bx, by, wRoad, ROAD.width);
+  // Left
+  const [lx, ly] = w2s(ROAD.left - hw, ROAD.top - hw);
+  ctx.fillRect(lx, ly, ROAD.width, hRoad);
+  // Right
+  const [rx, ry] = w2s(ROAD.right - hw, ROAD.top - hw);
+  ctx.fillRect(rx, ry, ROAD.width, hRoad);
+
+  // Yellow center dashed paint
+  ctx.strokeStyle = '#FFEB3B';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([22, 16]);
+  const [l1x, l1y] = w2s(ROAD.left, ROAD.top);
+  const [r1x, r1y] = w2s(ROAD.right, ROAD.top);
+  const [l2x, l2y] = w2s(ROAD.left, ROAD.bottom);
+  const [r2x, r2y] = w2s(ROAD.right, ROAD.bottom);
+  ctx.beginPath();
+  ctx.moveTo(l1x, l1y); ctx.lineTo(r1x, r1y);
+  ctx.moveTo(l2x, l2y); ctx.lineTo(r2x, r2y);
+  ctx.moveTo(l1x, l1y); ctx.lineTo(l2x, l2y);
+  ctx.moveTo(r1x, r1y); ctx.lineTo(r2x, r2y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // White curb lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(tx, ty, wRoad, ROAD.width);
+  ctx.strokeRect(bx, by, wRoad, ROAD.width);
+  ctx.strokeRect(lx, ly, ROAD.width, hRoad);
+  ctx.strokeRect(rx, ry, ROAD.width, hRoad);
+}
+
+function drawHouses() {
+  for (const h of HOUSES) {
+    const [sx, sy] = w2s(h.x - h.w/2, h.y - h.h/2);
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(sx + 5, sy + 6, h.w, h.h);
+    // Wall
+    ctx.fillStyle = h.color;
+    ctx.fillRect(sx, sy, h.w, h.h);
+    // Roof (triangle on top, simple)
+    ctx.fillStyle = h.roof;
+    ctx.beginPath();
+    ctx.moveTo(sx - 6, sy);
+    ctx.lineTo(sx + h.w/2, sy - 34);
+    ctx.lineTo(sx + h.w + 6, sy);
+    ctx.closePath();
+    ctx.fill();
+    // Door
+    ctx.fillStyle = '#3E2723';
+    ctx.fillRect(sx + h.w/2 - 14, sy + h.h - 40, 28, 40);
+    ctx.fillStyle = '#FFD54F';
+    ctx.fillRect(sx + h.w/2 + 8, sy + h.h - 22, 3, 3);
+    // Windows
+    ctx.fillStyle = '#B3E5FC';
+    ctx.fillRect(sx + 18, sy + 22, 28, 24);
+    ctx.fillRect(sx + h.w - 46, sy + 22, 28, 24);
+    ctx.strokeStyle = '#37474F'; ctx.lineWidth = 2;
+    ctx.strokeRect(sx + 18, sy + 22, 28, 24);
+    ctx.strokeRect(sx + h.w - 46, sy + 22, 28, 24);
+    ctx.beginPath();
+    ctx.moveTo(sx + 32, sy + 22); ctx.lineTo(sx + 32, sy + 46);
+    ctx.moveTo(sx + 18, sy + 34); ctx.lineTo(sx + 46, sy + 34);
+    ctx.moveTo(sx + h.w - 32, sy + 22); ctx.lineTo(sx + h.w - 32, sy + 46);
+    ctx.moveTo(sx + h.w - 46, sy + 34); ctx.lineTo(sx + h.w - 18, sy + 34);
+    ctx.stroke();
+  }
+}
+
+function drawPaintStrokes() {
+  for (const s of paintStrokes) {
+    const [sx, sy] = w2s(s.x, s.y);
+    if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
+    ctx.fillStyle = s.c;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.arc(sx, sy, s.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPaint() {
+  for (const p of PAINT_SPLATS) {
+    const [sx, sy] = w2s(p.x, p.y);
+    if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
+    ctx.fillStyle = p.c;
+    ctx.globalAlpha = 0.55;
+    // splotchy shape made of a few circles
+    ctx.beginPath();
+    ctx.arc(sx, sy, p.r, 0, Math.PI*2);
+    ctx.arc(sx + p.r*0.7, sy - p.r*0.4, p.r*0.55, 0, Math.PI*2);
+    ctx.arc(sx - p.r*0.6, sy + p.r*0.3, p.r*0.5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawNpcs() {
+  for (const n of NPCS) {
+    const [sx, sy] = w2s(n.x, n.y);
+    if (sx < -80 || sx > W + 80 || sy < -80 || sy > H + 80) continue;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(n.angle);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(-n.w/2 + 3, -n.h/2 + 4, n.w, n.h);
+    // body
+    ctx.fillStyle = n.color;
+    ctx.fillRect(-n.w/2, -n.h/2, n.w, n.h);
+    // windows (black windshield front + rear)
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(n.w/2 - 12, -n.h/2 + 4, 8, n.h - 8);
+    ctx.fillRect(-n.w/2 + 4,  -n.h/2 + 4, 8, n.h - 8);
+
+    if (n.type === 'bus') {
+      // row of side windows
+      ctx.fillStyle = '#90CAF9';
+      for (let i = 0; i < 5; i++) {
+        ctx.fillRect(-n.w/2 + 18 + i*13, -n.h/2 + 5, 10, n.h - 20);
+      }
+      // SCHOOL BUS text stripe
+      ctx.fillStyle = '#212121';
+      ctx.fillRect(-n.w/2, n.h/2 - 10, n.w, 4);
+    } else if (n.type === 'police') {
+      // Light bar with flashing red/blue
+      const red  = Math.sin(n.lightPhase) > 0;
+      ctx.fillStyle = red ? '#F44336' : '#1A237E';
+      ctx.fillRect(-8, -n.h/2 - 7, 16, 7);
+      ctx.fillStyle = red ? '#1A237E' : '#F44336';
+      ctx.fillRect(-8, -n.h/2 - 7, 8, 7);
+      // white stripe
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(-n.w/2, -4, n.w, 8);
+      ctx.fillStyle = '#212121';
+      ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('POLICE', 0, 0);
+    } else {
+      // roadster: racing stripe + spoiler
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(-n.w/2 + 6, -3, n.w - 12, 6);
+      ctx.fillStyle = '#212121';
+      ctx.fillRect(-n.w/2 - 3, -n.h/2, 3, n.h); // rear spoiler
+    }
+    // Wheels
+    ctx.fillStyle = '#212121';
+    ctx.fillRect(-n.w/2 + 6,  n.h/2 - 3, 14, 6);
+    ctx.fillRect( n.w/2 - 20, n.h/2 - 3, 14, 6);
+    ctx.fillRect(-n.w/2 + 6, -n.h/2 - 3, 14, 6);
+    ctx.fillRect( n.w/2 - 20, -n.h/2 - 3, 14, 6);
+    ctx.restore();
+  }
+}
+
+function drawBoundary() {
+  const [sx, sy] = w2s(0, 0);
+  const stripe = 24;
+  function drawHBar(x, y, w) {
+    for (let i = 0; i < w; i += stripe) {
+      ctx.fillStyle = ((i / stripe) % 2 === 0) ? '#FF6F00' : '#FFFFFF';
+      ctx.fillRect(x + i, y, Math.min(stripe, w - i), 14);
+    }
+    ctx.strokeStyle = '#BF360C'; ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, 14);
+  }
+  function drawVBar(x, y, h) {
+    for (let i = 0; i < h; i += stripe) {
+      ctx.fillStyle = ((i / stripe) % 2 === 0) ? '#FF6F00' : '#FFFFFF';
+      ctx.fillRect(x, y + i, 14, Math.min(stripe, h - i));
+    }
+    ctx.strokeStyle = '#BF360C'; ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, 14, h);
+  }
+  drawHBar(sx, sy, WORLD.w);
+  drawHBar(sx, sy + WORLD.h - 14, WORLD.w);
+  drawVBar(sx, sy, WORLD.h);
+  drawVBar(sx + WORLD.w - 14, sy, WORLD.h);
+}
+
+function drawFoundation(f) {
+  const [sx, sy] = w2s(f.x, f.y);
+  // Ground pad
+  ctx.fillStyle = '#90A4AE';
+  ctx.fillRect(sx - 85, sy + 30, 170, 42);
+  ctx.fillStyle = '#B0BEC5';
+  ctx.fillRect(sx - 83, sy + 32, 166, 38);
+  // Cement fill progress
+  const pct = f.cement / 100;
+  ctx.fillStyle = '#ECEFF1';
+  ctx.fillRect(sx - 83, sy + 32, 166 * pct, 38);
+  if (f.cement < 100) {
+    ctx.fillStyle = '#D32F2F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Cement: ' + f.cement + '%', sx, sy + 55);
+  }
+  // Rebar at foundation ready
+  if (f.floors === 0 && f.cement >= 100) {
+    ctx.strokeStyle = '#6D4C41'; ctx.lineWidth = 3;
+    for (let i = -3; i <= 3; i++) {
+      const bx = sx + i * 22;
+      ctx.beginPath(); ctx.moveTo(bx, sy + 30); ctx.lineTo(bx, sy - 6); ctx.stroke();
+    }
+  }
+  // Stacked floors
+  const floorH = 26;
+  for (let k = 0; k < f.floors; k++) {
+    const fy = sy + 30 - (k + 1) * floorH;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(sx - 63, fy + 3, 130, floorH);
+    const mat = f.materials[k];
+    if (mat === 'brick') {
+      // brick pattern red floor
+      ctx.fillStyle = '#C62828';
+      ctx.fillRect(sx - 65, fy, 130, floorH);
+      ctx.strokeStyle = '#8C1616'; ctx.lineWidth = 1;
+      for (let yy = fy + 6; yy < fy + floorH; yy += 6) {
+        ctx.beginPath(); ctx.moveTo(sx - 65, yy); ctx.lineTo(sx + 65, yy); ctx.stroke();
+      }
+      for (let xx = sx - 60; xx < sx + 65; xx += 16) {
+        ctx.beginPath(); ctx.moveTo(xx, fy); ctx.lineTo(xx, fy + floorH); ctx.stroke();
+      }
+    } else {
+      const pal = ['#E8A87C','#C38D9E','#85DCB0','#41B3A3','#E27D60','#85CDCA','#F7B7A3','#90CAF9','#FFAB91','#BCAAA4'];
+      ctx.fillStyle = pal[k % pal.length];
+      ctx.fillRect(sx - 65, fy, 130, floorH);
+      ctx.fillStyle = '#FFF59D';
+      ctx.fillRect(sx - 55, fy + 5, 18, 13);
+      ctx.fillRect(sx - 28, fy + 5, 18, 13);
+      ctx.fillRect(sx, fy + 5, 18, 13);
+      ctx.fillRect(sx + 28, fy + 5, 18, 13);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(sx - 67, fy, 134, 3);
+    }
+  }
+  if (f.floors >= 10) {
+    const topY = sy + 30 - f.floors * floorH - 30;
+    ctx.fillStyle = '#D32F2F';
+    ctx.beginPath();
+    ctx.moveTo(sx - 70, topY + 30); ctx.lineTo(sx, topY - 10); ctx.lineTo(sx + 70, topY + 30);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#424242'; ctx.fillRect(sx - 1, topY - 60, 2, 50);
+    ctx.fillStyle = '#FFD700'; ctx.fillRect(sx + 1, topY - 60, 30, 20);
+  }
+  // Label
+  ctx.fillStyle = 'white'; ctx.strokeStyle = 'black'; ctx.lineWidth = 3;
+  ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center';
+  ctx.strokeText('🏗️ Site #' + f.id + ' — ' + f.floors + '/10', sx, sy + 92);
+  ctx.fillText('🏗️ Site #' + f.id + ' — ' + f.floors + '/10', sx, sy + 92);
+  // Corner cones to mark the pad
+  ctx.fillStyle = '#FF5722';
+  for (const [dx, dy] of [[-95, 25], [95, 25], [-95, 75], [95, 75]]) {
+    const cx = sx + dx, cy = sy + dy;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 12); ctx.lineTo(cx - 6, cy + 6); ctx.lineTo(cx + 6, cy + 6);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'white'; ctx.fillRect(cx - 5, cy, 10, 2); ctx.fillStyle = '#FF5722';
+  }
+}
+
+function drawDirtPiles() {
+  for (const p of dirtPiles) {
+    if (!p.alive) continue;
+    const [sx, sy] = w2s(p.x, p.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(sx, sy + 4, p.size, p.size*0.35, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6D4C41';
+    ctx.beginPath(); ctx.ellipse(sx, sy, p.size, p.size*0.7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#8D6E63';
+    ctx.beginPath(); ctx.ellipse(sx - p.size*0.2, sy - p.size*0.2, p.size*0.7, p.size*0.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#A1887F';
+    ctx.beginPath(); ctx.ellipse(sx - p.size*0.35, sy - p.size*0.35, p.size*0.3, p.size*0.2, 0, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function drawItem(it) {
+  const [sx, sy] = w2s(it.x, it.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  if (it.type === 'block') {
+    ctx.fillRect(sx - 15, sy - 11, 32, 24);
+    ctx.fillStyle = '#BDBDBD'; ctx.fillRect(sx - 18, sy - 14, 36, 26);
+    ctx.fillStyle = '#757575'; ctx.fillRect(sx - 18, sy - 14, 36, 4);
+    ctx.fillStyle = '#616161';
+    ctx.fillRect(sx - 14, sy - 6, 10, 14);
+    ctx.fillRect(sx + 4, sy - 6, 10, 14);
+  } else if (it.type === 'brick') {
+    ctx.fillRect(sx - 12, sy - 7, 26, 16);
+    ctx.fillStyle = '#C62828'; ctx.fillRect(sx - 14, sy - 9, 28, 18);
+    ctx.strokeStyle = '#8C1616'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx - 14, sy); ctx.lineTo(sx + 14, sy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx, sy - 9); ctx.lineTo(sx, sy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx - 7, sy); ctx.lineTo(sx - 7, sy + 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx + 7, sy); ctx.lineTo(sx + 7, sy + 9); ctx.stroke();
+  } else if (it.type === 'plank') {
+    ctx.fillRect(sx - 22, sy - 5, 46, 12);
+    ctx.fillStyle = '#8D6E63'; ctx.fillRect(sx - 24, sy - 7, 48, 14);
+    ctx.strokeStyle = '#6D4C41'; ctx.lineWidth = 1;
+    for (let xx = sx - 22; xx < sx + 24; xx += 10) {
+      ctx.beginPath(); ctx.moveTo(xx, sy - 6); ctx.lineTo(xx + 3, sy + 6); ctx.stroke();
+    }
+  } else if (it.type === 'dirt') {
+    ctx.beginPath(); ctx.arc(sx, sy, 14, 0, Math.PI*2);
+    ctx.fillStyle = '#795548'; ctx.fill();
+  }
+}
+
+function drawItems() {
+  for (const it of items) {
+    if (it.placed) continue;
+    drawItem(it);
+  }
+}
+
+function drawSupplyArea() {
+  // A pile of bricks and planks to pick up, plus a block stockpile
+  const spots = [
+    { x: 1100, y: 900, label: 'BRICKS' },
+    { x: 1500, y: 900, label: 'PLANKS' },
+    { x: 1300, y: 1100, label: 'BLOCKS' },
+  ];
+  for (const s of spots) {
+    const [sx, sy] = w2s(s.x, s.y);
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath(); ctx.ellipse(sx, sy + 4, 60, 18, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'white'; ctx.strokeStyle = 'black'; ctx.lineWidth = 3;
+    ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.strokeText(s.label, sx, sy - 50);
+    ctx.fillText(s.label, sx, sy - 50);
+  }
+}
+
+function drawVehicle(v, isActive) {
+  const [sx, sy] = w2s(v.x, v.y);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(v.angle);
+  if (isActive) { ctx.shadowColor = '#FFEB3B'; ctx.shadowBlur = 18; }
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(-v.w/2 + 4, -v.h/2 + 4, v.w, v.h);
+
+  if (v.type === 'bulldozer') {
+    ctx.fillStyle = '#F9A825'; ctx.fillRect(-v.w/2 + 10, -v.h/2 + 6, v.w - 20, v.h - 12);
+    ctx.fillStyle = '#FFCA28'; ctx.fillRect(-10, -v.h/2 + 10, 20, 16);
+    ctx.fillStyle = '#263238'; ctx.fillRect(-8, -v.h/2 + 12, 16, 6);
+    ctx.fillStyle = '#B0BEC5'; ctx.fillRect(-v.w/2 - 5, -v.h/2 + 4, 10, v.h - 8);
+    ctx.fillStyle = '#78909C'; ctx.fillRect(-v.w/2 - 5, -v.h/2 + 4, 10, 3);
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-v.w/2 + 6, -v.h/2 - 2, v.w - 12, 7);
+    ctx.fillRect(-v.w/2 + 6, v.h/2 - 5, v.w - 12, 7);
+  }
+  else if (v.type === 'digger') {
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-v.w/2, -v.h/2, v.w, 8);
+    ctx.fillRect(-v.w/2, v.h/2 - 8, v.w, 8);
+    ctx.fillStyle = '#FFC107'; ctx.fillRect(-v.w/2 + 10, -v.h/2 + 10, v.w - 30, v.h - 20);
+    ctx.fillStyle = '#FFD54F'; ctx.fillRect(-v.w/2 + 14, -v.h/2 + 14, 20, 14);
+    ctx.fillStyle = '#263238'; ctx.fillRect(-v.w/2 + 16, -v.h/2 + 16, 16, 6);
+    ctx.strokeStyle = '#FFC107'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(6, 0);
+    ctx.lineTo(v.w/2 - 8, -v.h/2 - 6);
+    ctx.lineTo(v.w/2 + 16, 6);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.fillStyle = '#9E9E9E';
+    ctx.beginPath();
+    ctx.moveTo(v.w/2 + 10, 2); ctx.lineTo(v.w/2 + 24, 2);
+    ctx.lineTo(v.w/2 + 22, 14); ctx.lineTo(v.w/2 + 12, 14);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#616161'; ctx.fillRect(v.w/2 + 12, 14, 10, 2);
+  }
+  else if (v.type === 'dumptruck') {
+    ctx.fillStyle = '#1976D2'; ctx.fillRect(-v.w/2, -v.h/2 + 4, 22, v.h - 8);
+    ctx.fillStyle = '#90CAF9'; ctx.fillRect(-v.w/2 + 4, -v.h/2 + 8, 14, 10);
+    ctx.fillStyle = '#EF6C00'; ctx.fillRect(-v.w/2 + 24, -v.h/2 + 2, v.w - 28, v.h - 4);
+    ctx.fillStyle = '#E65100'; ctx.fillRect(-v.w/2 + 24, -v.h/2 + 2, v.w - 28, 4);
+    // Show cargo count as little markers on bed
+    ctx.fillStyle = '#BDBDBD';
+    for (let i = 0; i < v.bed.length; i++) {
+      ctx.fillRect(-v.w/2 + 30 + i*14, -v.h/2 + 10, 12, v.h - 20);
+    }
+    ctx.fillStyle = '#212121';
+    for (const dx of [-v.w/2 + 4, v.w/2 - 28, v.w/2 - 16]) {
+      ctx.fillRect(dx, -v.h/2 - 4, 12, 5);
+      ctx.fillRect(dx, v.h/2 - 1, 12, 5);
+    }
+  }
+  else if (v.type === 'mixer') {
+    ctx.fillStyle = '#C62828'; ctx.fillRect(-v.w/2, -v.h/2 + 4, 20, v.h - 8);
+    ctx.fillStyle = '#90CAF9'; ctx.fillRect(-v.w/2 + 3, -v.h/2 + 8, 14, 10);
+    ctx.fillStyle = '#9E9E9E';
+    ctx.beginPath(); ctx.ellipse(12, 0, v.w/2 - 12, v.h/2 - 3, 0, 0, Math.PI*2); ctx.fill();
+    const phase = (performance.now() / 500) % (Math.PI*2);
+    ctx.strokeStyle = '#616161'; ctx.lineWidth = 2;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.ellipse(12, 0, Math.max(3, v.w/2 - 12 - Math.abs(i)*3), Math.max(2, v.h/2 - 3 - Math.abs(i)*1.5), phase + i*0.3, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#757575'; ctx.fillRect(v.w/2 - 4, -4, 14, 8);
+    ctx.fillStyle = '#212121';
+    for (const dx of [-v.w/2 + 4, v.w/2 - 20]) {
+      ctx.fillRect(dx, -v.h/2 - 4, 12, 5);
+      ctx.fillRect(dx, v.h/2 - 1, 12, 5);
+    }
+  }
+  else if (v.type === 'crane') {
+    // base truck body
+    ctx.fillStyle = '#FFA000'; ctx.fillRect(-v.w/2, -v.h/2 + 4, v.w, v.h - 8);
+    ctx.fillStyle = '#FFCA28'; ctx.fillRect(-v.w/2 + 4, -v.h/2 + 8, 20, v.h - 16);
+    ctx.fillStyle = '#263238'; ctx.fillRect(-v.w/2 + 6, -v.h/2 + 10, 16, 6);
+    // outriggers
+    ctx.fillStyle = '#E65100';
+    ctx.fillRect(-v.w/2 - 4, -v.h/2 + 14, 4, v.h - 28);
+    ctx.fillRect(v.w/2, -v.h/2 + 14, 4, v.h - 28);
+    // boom arm
+    ctx.strokeStyle = '#FF8F00'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-v.w/2 + 30, 0);
+    ctx.lineTo(v.w/2 + 30, 0);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    // boom segments
+    ctx.strokeStyle = '#FFE082'; ctx.lineWidth = 2;
+    for (let x = -v.w/2 + 30; x <= v.w/2 + 30; x += 12) {
+      ctx.beginPath(); ctx.moveTo(x, -5); ctx.lineTo(x, 5); ctx.stroke();
+    }
+    // hook cable
+    ctx.strokeStyle = '#424242'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(v.w/2 + 30, 0); ctx.lineTo(v.w/2 + 30, 12); ctx.stroke();
+    // hook
+    ctx.strokeStyle = '#9E9E9E'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(v.w/2 + 30, 16, 5, 0.3, Math.PI - 0.3); ctx.stroke();
+    // wheels
+    ctx.fillStyle = '#212121';
+    for (const dx of [-v.w/2 + 6, v.w/2 - 20]) {
+      ctx.fillRect(dx, -v.h/2 - 4, 12, 5);
+      ctx.fillRect(dx, v.h/2 - 1, 12, 5);
+    }
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const [sx, sy] = w2s(p.x, p.y);
+    const alpha = 1 - p.age / p.life;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(sx, sy, p.size, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawSpacePrompt() {
+  // Highlight the item / target nearest the active vehicle's tool
+  const v = VEHICLES[activeIdx];
+  const tp = toolPoint(v);
+  let target = null, kind = '';
+  if (v.type === 'bulldozer' || v.type === 'digger') {
+    const pile = nearestDirtPile(v, 85);
+    const item = nearestItem(v, 60);
+    if (v.type === 'digger' && v.holding) {
+      target = tp; kind = 'drop';
+    } else if (pile || item) {
+      target = pile || item; kind = v.type === 'digger' ? 'dig/pick' : 'push';
+    }
+  } else if (v.type === 'dumptruck') {
+    const fnd = nearestFoundation(v, 140);
+    const item = nearestItem(v, 60);
+    if (fnd && v.bed.length) { target = fnd; kind = 'place floor'; }
+    else if (item && v.bed.length < 3) { target = item; kind = 'load'; }
+    else if (v.bed.length > 0) { target = tp; kind = 'unload'; }
+  } else if (v.type === 'mixer') {
+    const fnd = nearestFoundation(v, 150);
+    if (fnd && fnd.cement < 100) { target = fnd; kind = 'pour cement'; }
+  } else if (v.type === 'crane') {
+    if (v.holding) {
+      const fnd = nearestFoundation(v, 170);
+      if (fnd && fnd.cement >= 100 && fnd.floors < 10) { target = fnd; kind = 'place'; }
+      else { target = tp; kind = 'drop'; }
+    } else {
+      const item = nearestItem(v, 85);
+      if (item) { target = item; kind = 'lift'; }
+    }
+  }
+  if (!target) return;
+  const [sx, sy] = w2s(target.x, target.y);
+  // Pulsing circle around the target
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+  ctx.strokeStyle = 'rgba(255,235,59,' + (0.5 + pulse*0.5) + ')';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(sx, sy, 28 + pulse*6, 0, Math.PI*2); ctx.stroke();
+  // SPACE label
+  ctx.fillStyle = '#FFEB3B'; ctx.strokeStyle = 'black'; ctx.lineWidth = 3;
+  ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  const label = 'SPACE: ' + kind;
+  ctx.strokeText(label, sx, sy - 38);
+  ctx.fillText(label, sx, sy - 38);
+}
+
+// ===== Supplies setup =====
+function seedSupplies() {
+  // Pile of bricks
+  for (let i = 0; i < 5; i++) addItem('brick', 1100 + (i%3)*22 - 20, 900 + Math.floor(i/3)*18 - 10);
+  // Pile of planks
+  for (let i = 0; i < 3; i++) addItem('plank', 1500 + i*10 - 10, 900 + i*14 - 10);
+  // Pile of blocks
+  for (let i = 0; i < 4; i++) addItem('block', 1300 + (i%2)*38 - 20, 1100 + Math.floor(i/2)*30 - 10);
+}
+
+// ===== Initial setup =====
+for (let i = 0; i < 14; i++) spawnDirtPile();
+seedSupplies();
+
+// ===== Loop =====
+function loop() {
+  updateSpace();
+  updateActive();
+  updateParticles();
+  updateStatus();
+
+  updateNpcs();
+
+  drawGround();
+  drawPaint();
+  drawPaintStrokes();
+  drawRoads();
+  drawBoundary();
+  drawHouses();
+  drawSupplyArea();
+  for (const f of foundations) drawFoundation(f);
+  drawDirtPiles();
+  drawItems();
+  drawNpcs();
+
+  for (let i = 0; i < VEHICLES.length; i++) {
+    if (i === activeIdx) continue;
+    drawVehicle(VEHICLES[i], false);
+  }
+  drawVehicle(VEHICLES[activeIdx], true);
+  drawParticles();
+  drawSpacePrompt();
+  updateWeather();
+  drawWeather();
+
+  requestAnimationFrame(loop);
+}
+
+showMessage('🚧 Build 3 towers! Pick up / drop things with Space.');
+loop();
+</script>
+</body>
+</html>
