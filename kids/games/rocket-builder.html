@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rocket Builder Arcade</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #03020f;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+}
+canvas { display: block; }
+#controls {
+  color: #4a5a8a;
+  font-size: 11px;
+  padding: 5px;
+  text-align: center;
+  letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+<canvas id="c" width="960" height="600"></canvas>
+<div id="controls">ARROW KEYS: Drive &nbsp;|&nbsp; SPACE: Pick Up / Drop / Interact &nbsp;|&nbsp; MOUSE: Click UI elements</div>
+<script>
+// =============================================================================
+//  ROCKET BUILDER ARCADE  — complete single-file HTML5 canvas game
+// =============================================================================
+const C = document.getElementById('c');
+const cx = C.getContext('2d');
+const W = 960, H = 600;
+const GROUND = 500; // y of ground surface
+
+// ── input ────────────────────────────────────────────────────────────────────
+const K = {};
+const mouse = { x: 0, y: 0, clicked: false, down: false };
+C.addEventListener('mousemove', e => {
+  const r = C.getBoundingClientRect();
+  mouse.x = (e.clientX - r.left) * (W / r.width);
+  mouse.y = (e.clientY - r.top)  * (H / r.height);
+});
+C.addEventListener('mousedown', () => { mouse.down = true; mouse.clicked = true; });
+C.addEventListener('mouseup',   () => { mouse.down = false; });
+document.addEventListener('keydown', e => {
+  K[e.key] = true;
+  if ([' ','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { K[e.key] = false; });
+
+// ── utility ──────────────────────────────────────────────────────────────────
+function rr(x,y,w,h,r,fill,stroke,lw) { // rounded rect fill/stroke
+  cx.beginPath();
+  cx.moveTo(x+r,y); cx.lineTo(x+w-r,y); cx.arcTo(x+w,y,x+w,y+r,r);
+  cx.lineTo(x+w,y+h-r); cx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  cx.lineTo(x+r,y+h); cx.arcTo(x,y+h,x,y+h-r,r);
+  cx.lineTo(x,y+r); cx.arcTo(x,y,x+r,y,r);
+  cx.closePath();
+  if (fill)   { cx.fillStyle = fill; cx.fill(); }
+  if (stroke) { cx.strokeStyle = stroke; cx.lineWidth = lw||1; cx.stroke(); }
+}
+function inBox(px,py,x,y,w,h) { return px>=x && px<=x+w && py>=y && py<=y+h; }
+function inCirc(px,py,cx2,cy2,r) { return (px-cx2)**2+(py-cy2)**2 <= r*r; }
+function lerp(a,b,t) { return a+(b-a)*t; }
+function hsl(h,s,l,a=1) { return `hsla(${h|0},${s|0}%,${l|0}%,${a})`; }
+function rainbow(t, a=1) { return hsl(((t*2)%360+360)%360,100,62,a); }
+
+// ── particles ────────────────────────────────────────────────────────────────
+let P = [];
+function spark(x,y,col,n=10,spd=4,life=50) {
+  for (let i=0;i<n;i++) {
+    const a = Math.random()*Math.PI*2, s = Math.random()*spd+1;
+    P.push({ x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s-Math.random()*2,
+             life, ml:life, col, sz:Math.random()*3+1, star:false });
+  }
+}
+function starSpark(x,y,n=8,spd=5,life=60) {
+  const cols=['#ff0','#f0f','#0ff','#f80','#0f8','#8f0','#08f','#f08'];
+  for (let i=0;i<n;i++) {
+    const a=Math.random()*Math.PI*2, s=Math.random()*spd+1, c=cols[i%cols.length];
+    P.push({ x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+             life:life+Math.random()*20, ml:life+20, col:c, sz:Math.random()*4+2, star:true });
+  }
+}
+function fireParticle(x,y,str=1) {
+  const cols=['#fff8c0','#ffe080','#ffa030','#ff5010','#ff2200'];
+  P.push({ x:x+(Math.random()-.5)*16*str, y,
+           vx:(Math.random()-.5)*4*str, vy:-(Math.random()*5+3)*str,
+           life:30+Math.random()*20, ml:50, col:cols[Math.floor(Math.random()*cols.length)],
+           sz:(4+Math.random()*8)*str, star:false, fire:true });
+}
+function smokeParticle(x,y) {
+  P.push({ x:x+(Math.random()-.5)*30, y,
+           vx:(Math.random()-.5)*2, vy:-(Math.random()*2+1),
+           life:80+Math.random()*40, ml:120, col:'#888', sz:12+Math.random()*16,
+           star:false, smoke:true });
+}
+
+function tickParticles() {
+  P = P.filter(p=>p.life>0);
+  for (const p of P) {
+    p.x+=p.vx; p.y+=p.vy;
+    if (!p.smoke) p.vy += p.fire ? 0.05 : 0.12;
+    p.vx *= p.smoke ? 0.97 : 0.98;
+    p.life--;
+  }
+}
+function drawParticles() {
+  for (const p of P) {
+    const a = p.life/p.ml;
+    cx.save();
+    cx.globalAlpha = a * (p.smoke ? 0.4 : 1);
+    if (p.smoke) {
+      cx.fillStyle = `rgba(140,130,150,${a*0.4})`;
+      cx.beginPath(); cx.arc(p.x,p.y,p.sz*a,0,Math.PI*2); cx.fill();
+    } else if (p.star) {
+      cx.fillStyle = p.col; cx.shadowColor=p.col; cx.shadowBlur=8;
+      const s = p.sz*a;
+      cx.beginPath();
+      for (let i=0;i<4;i++) {
+        const ang=i/4*Math.PI*2;
+        i===0?cx.moveTo(p.x+Math.cos(ang)*s,p.y+Math.sin(ang)*s)
+             :cx.lineTo(p.x+Math.cos(ang)*s,p.y+Math.sin(ang)*s);
+      }
+      cx.closePath(); cx.fill();
+    } else {
+      cx.fillStyle=p.col; cx.shadowColor=p.col; cx.shadowBlur=6;
+      cx.beginPath(); cx.arc(p.x,p.y,Math.max(0.5,p.sz*a),0,Math.PI*2); cx.fill();
+    }
+    cx.restore();
+  }
+}
+
+// ── stars (background) ───────────────────────────────────────────────────────
+const STARS = Array.from({length:220}, ()=>({
+  x:Math.random()*W, y:Math.random()*(GROUND-20),
+  r:Math.random()*1.6+0.3, ph:Math.random()*Math.PI*2
+}));
+function drawStars(yOff=0) {
+  cx.save();
+  STARS.forEach(s=>{
+    const t=0.4+0.6*Math.sin(s.ph+tick*.018);
+    cx.globalAlpha=t*0.9;
+    cx.fillStyle='#fff'; cx.shadowColor='#aaccff'; cx.shadowBlur=2;
+    cx.beginPath(); cx.arc(s.x,s.y+yOff,s.r,0,Math.PI*2); cx.fill();
+  });
+  cx.restore();
+}
+
+// ── game-wide state ──────────────────────────────────────────────────────────
+let tick = 0;
+let phase = 'TITLE'; // TITLE COLLECT ASSEMBLE PAINT GLUE FUEL PRELAUNCH COUNTDOWN LAUNCH WIN
+let prevSpace = false;
+let notification = ''; let notifyTimer = 0;
+
+function notify(txt, dur=160) { notification=txt; notifyTimer=dur; }
+
+// ── launch pad / rocket position ─────────────────────────────────────────────
+const PAD_X = 820;
+const PAD_Y = GROUND;
+
+// ── rocket parts definitions ─────────────────────────────────────────────────
+const PART_IDS   = ['nose','body1','body2','engine','fins'];
+const PART_NAMES = { nose:'Nose Cone', body1:'Upper Body', body2:'Lower Body', engine:'Engine Nozzle', fins:'Fins' };
+const PART_COLS  = { nose:'#c8c8d8', body1:'#eeeeff', body2:'#dde0f0', engine:'#778899', fins:'#9999bb' };
+
+// Ground positions where parts are scattered
+const PART_POS = { nose:{x:120,y:GROUND}, body1:{x:270,y:GROUND}, body2:{x:410,y:GROUND},
+                   engine:{x:560,y:GROUND}, fins:{x:680,y:GROUND} };
+
+let partCollected = { nose:false, body1:false, body2:false, engine:false, fins:false };
+let partDelivered = { nose:false, body1:false, body2:false, engine:false, fins:false };
+
+// Assembled state
+let assembled   = []; // ordered list of placed part ids
+let paintColor  = { nose:'#c0c0d0', body1:'#ffffff', body2:'#e0e0ff', engine:'#778899', fins:'#9999bb' };
+let glued       = { nose:false, body1:false, body2:false, engine:false, fins:false };
+let fuelPct     = 0;
+
+// ── truck ────────────────────────────────────────────────────────────────────
+const truck = { x:150, y:GROUND-12, vx:0, facing:1, carrying:null };
+
+function updateTruck() {
+  const spd = 3.6;
+  if (K['ArrowLeft'])  { truck.vx = Math.max(truck.vx-.5,-spd); truck.facing=-1; }
+  if (K['ArrowRight']) { truck.vx = Math.min(truck.vx+.5, spd); truck.facing= 1; }
+  truck.vx *= 0.78;
+  truck.x  += truck.vx;
+  truck.x   = Math.max(50, Math.min(W-50, truck.x));
+
+  // Wheel dust
+  if (Math.abs(truck.vx)>1 && tick%4===0) {
+    P.push({ x:truck.x+(Math.random()-.5)*28, y:GROUND+4,
+             vx:(Math.random()-.5)*1.5-truck.vx*.15, vy:-(Math.random()*.8+.2),
+             life:22, ml:22, col:'#666680', sz:3, star:false, smoke:false });
+  }
+}
+
+function drawTruck(x,y,facing,carryId) {
+  cx.save(); cx.translate(x,y); if(facing<0) cx.scale(-1,1);
+
+  // Flatbed
+  const fbg = cx.createLinearGradient(-38,-10,-38,0);
+  fbg.addColorStop(0,'#2a3a5a'); fbg.addColorStop(1,'#1a2a40');
+  rr(-38,-10,36,10,2,null,'#3a4a7a',1);
+  cx.fillStyle=fbg; cx.fill();
+
+  // Cabin
+  const cbg = cx.createLinearGradient(0,-42,0,-10);
+  cbg.addColorStop(0,'#3a5a9a'); cbg.addColorStop(1,'#1e3060');
+  rr(-2,-42,42,32,5,null,'#4a6aaa',1.5);
+  cx.fillStyle=cbg; cx.fill();
+
+  // Window
+  rr(6,-38,26,14,3,'#88bbee','#aaddff',1);
+  cx.fillStyle='rgba(255,255,255,0.35)'; cx.fillRect(8,-37,8,5);
+
+  // Headlight
+  cx.fillStyle='#ffff99'; cx.shadowColor='#ffff44'; cx.shadowBlur=10;
+  cx.beginPath(); cx.arc(38,-18,4,0,Math.PI*2); cx.fill();
+  cx.shadowBlur=0;
+
+  // Exhaust
+  if (Math.abs(truck.vx)>.5 && tick%6<3) {
+    cx.fillStyle='rgba(150,150,180,.3)';
+    cx.beginPath(); cx.arc(-40,-20,5,0,Math.PI*2); cx.fill();
+  }
+
+  // Wheels
+  for (const wx of [-22,22]) {
+    cx.fillStyle='#181828'; cx.strokeStyle='#444466'; cx.lineWidth=1.5;
+    cx.beginPath(); cx.arc(wx,2,12,0,Math.PI*2); cx.fill(); cx.stroke();
+    cx.fillStyle='#2a2a40';
+    cx.beginPath(); cx.arc(wx,2,7,0,Math.PI*2); cx.fill();
+    cx.fillStyle='#8899aa';
+    cx.beginPath(); cx.arc(wx,2,3,0,Math.PI*2); cx.fill();
+    // Rolling treads
+    for (let i=0;i<6;i++) {
+      const a = i/6*Math.PI*2+tick*.08*(facing>0?1:-1);
+      cx.strokeStyle='#111122'; cx.lineWidth=1;
+      cx.beginPath(); cx.arc(wx,2,10,a,a+.35); cx.stroke();
+    }
+  }
+
+  // Carried part
+  if (carryId) drawPartMini(carryId, -22, -58, 1.2);
+
+  cx.restore();
+}
+
+// ── draw helpers for rocket parts ────────────────────────────────────────────
+function drawPartMini(id, x, y, sc=1, col) {
+  const c = col || PART_COLS[id];
+  cx.save(); cx.translate(x,y); cx.scale(sc,sc);
+  cx.fillStyle=c; cx.strokeStyle='rgba(0,0,0,0.4)'; cx.lineWidth=1;
+  if (id==='nose') {
+    cx.beginPath(); cx.moveTo(0,-18); cx.quadraticCurveTo(10,-5,8,2);
+    cx.lineTo(-8,2); cx.quadraticCurveTo(-10,-5,0,-18); cx.closePath();
+    cx.fill(); cx.stroke();
+  } else if (id==='body1'||id==='body2') {
+    rr(-8,-12,16,24,2,c,'rgba(0,0,0,0.3)',1);
+    if (id==='body1') {
+      cx.fillStyle='#88ccff'; cx.shadowColor='#88ccff'; cx.shadowBlur=4;
+      cx.beginPath(); cx.arc(0,0,4,0,Math.PI*2); cx.fill();
+      cx.shadowBlur=0;
+    }
+  } else if (id==='engine') {
+    cx.beginPath(); cx.moveTo(-8,-10); cx.lineTo(8,-10);
+    cx.lineTo(12,6); cx.lineTo(-12,6); cx.closePath();
+    cx.fill(); cx.stroke();
+  } else if (id==='fins') {
+    cx.beginPath(); cx.moveTo(-4,-12); cx.lineTo(-18,4); cx.lineTo(-18,-14); cx.lineTo(-4,-16); cx.closePath(); cx.fill(); cx.stroke();
+    cx.beginPath(); cx.moveTo(4,-12);  cx.lineTo(18,4);  cx.lineTo(18,-14);  cx.lineTo(4,-16);  cx.closePath(); cx.fill(); cx.stroke();
+  }
+  cx.restore();
+}
+
+// ── draw the assembled rocket (base at rx,ry) ─────────────────────────────────
+function drawRocket(rx, ry, parts, cols, glowOn) {
+  const has = id => parts.includes(id);
+  const pc = k => {
+    const v = cols[k];
+    return v==='rainbow' ? rainbow(tick*1.5 + PART_IDS.indexOf(k)*55) : (v||'#ccc');
+  };
+  cx.save(); cx.translate(rx, ry);
+
+  // ─ FINS ─
+  if (has('fins')) {
+    cx.fillStyle = pc('fins');
+    if (glowOn) { cx.shadowColor=pc('fins'); cx.shadowBlur=10; }
+    cx.strokeStyle='rgba(0,0,0,.25)'; cx.lineWidth=1;
+    // left
+    cx.beginPath(); cx.moveTo(-13,0); cx.lineTo(-36,-18); cx.lineTo(-36,-65); cx.lineTo(-13,-55); cx.closePath(); cx.fill(); cx.stroke();
+    // right
+    cx.beginPath(); cx.moveTo(13,0);  cx.lineTo(36,-18);  cx.lineTo(36,-65);  cx.lineTo(13,-55);  cx.closePath(); cx.fill(); cx.stroke();
+    cx.shadowBlur=0;
+  }
+
+  // ─ ENGINE ─
+  if (has('engine')) {
+    const eg = cx.createLinearGradient(-16,-18,16,-18);
+    eg.addColorStop(0,'#555566'); eg.addColorStop(.5,pc('engine')); eg.addColorStop(1,'#555566');
+    cx.fillStyle=eg;
+    if (glowOn) { cx.shadowColor=pc('engine'); cx.shadowBlur=8; }
+    cx.strokeStyle='rgba(0,0,0,.3)'; cx.lineWidth=1;
+    cx.beginPath(); cx.moveTo(-13,-18); cx.lineTo(13,-18); cx.lineTo(18,0); cx.lineTo(-18,0); cx.closePath(); cx.fill(); cx.stroke();
+    // bell detail
+    cx.fillStyle='#333344';
+    cx.beginPath(); cx.ellipse(0,-10,8,4,0,0,Math.PI*2); cx.fill();
+    cx.shadowBlur=0;
+  }
+
+  // ─ LOWER BODY ─
+  if (has('body2')) {
+    const g = cx.createLinearGradient(-16,-130,16,-60);
+    g.addColorStop(0,pc('body2')); g.addColorStop(.45,'#fff'); g.addColorStop(1,pc('body2'));
+    rr(-16,-130,32,60,3,null,null);
+    cx.fillStyle=g; cx.fill();
+    cx.strokeStyle='rgba(100,100,140,.5)'; cx.lineWidth=1; cx.stroke();
+    if (glowOn) { cx.shadowColor=pc('body2'); cx.shadowBlur=8; }
+    // panel lines
+    cx.strokeStyle='rgba(0,0,0,.1)'; cx.lineWidth=.8;
+    for (const py of [-115,-100,-85,-75]) {
+      cx.beginPath(); cx.moveTo(-16,py); cx.lineTo(16,py); cx.stroke();
+    }
+    cx.shadowBlur=0;
+  }
+
+  // ─ UPPER BODY ─
+  if (has('body1')) {
+    const g = cx.createLinearGradient(-16,-215,16,-130);
+    g.addColorStop(0,pc('body1')); g.addColorStop(.45,'#fff'); g.addColorStop(1,pc('body1'));
+    rr(-16,-215,32,85,3,null,null);
+    cx.fillStyle=g; cx.fill();
+    cx.strokeStyle='rgba(100,100,140,.5)'; cx.lineWidth=1; cx.stroke();
+    if (glowOn) { cx.shadowColor=pc('body1'); cx.shadowBlur=8; }
+    // Porthole window
+    cx.fillStyle='#99d4ff'; cx.shadowColor='#99ddff'; cx.shadowBlur=12;
+    cx.beginPath(); cx.arc(0,-178,9,0,Math.PI*2); cx.fill();
+    cx.strokeStyle='#bbeeff'; cx.lineWidth=1.5; cx.stroke();
+    cx.fillStyle='rgba(255,255,255,.6)';
+    cx.beginPath(); cx.arc(-3,-181,3.5,0,Math.PI*2); cx.fill();
+    cx.shadowBlur=0;
+    // panel lines
+    cx.strokeStyle='rgba(0,0,0,.08)'; cx.lineWidth=.8;
+    for (const py of [-200,-190,-165,-150]) {
+      cx.beginPath(); cx.moveTo(-16,py); cx.lineTo(16,py); cx.stroke();
+    }
+  }
+
+  // ─ NOSE CONE ─
+  if (has('nose')) {
+    const g = cx.createLinearGradient(-16,-280,16,-215);
+    g.addColorStop(0,pc('nose')); g.addColorStop(.5,'#fff'); g.addColorStop(1,pc('nose'));
+    cx.fillStyle=g;
+    if (glowOn) { cx.shadowColor=pc('nose'); cx.shadowBlur=12; }
+    cx.strokeStyle='rgba(100,100,140,.4)'; cx.lineWidth=1;
+    cx.beginPath(); cx.moveTo(0,-282); cx.quadraticCurveTo(20,-240,16,-215);
+    cx.lineTo(-16,-215); cx.quadraticCurveTo(-20,-240,0,-282); cx.closePath();
+    cx.fill(); cx.stroke();
+    // tip highlight
+    cx.fillStyle='rgba(255,255,255,.9)';
+    cx.beginPath(); cx.arc(0,-279,2,0,Math.PI*2); cx.fill();
+    cx.shadowBlur=0;
+  }
+
+  cx.restore();
+}
+
+// ── draw background ──────────────────────────────────────────────────────────
+function drawBG() {
+  const sky = cx.createLinearGradient(0,0,0,GROUND);
+  sky.addColorStop(0,'#02010f');
+  sky.addColorStop(.7,'#080520');
+  sky.addColorStop(1,'#110830');
+  cx.fillStyle=sky; cx.fillRect(0,0,W,GROUND);
+
+  // Distant nebula glow
+  const neb = cx.createRadialGradient(500,200,20,500,200,320);
+  neb.addColorStop(0,'rgba(80,20,120,.07)');
+  neb.addColorStop(1,'rgba(0,0,0,0)');
+  cx.fillStyle=neb; cx.fillRect(0,0,W,GROUND);
+
+  drawStars();
+
+  // Ground
+  const gnd = cx.createLinearGradient(0,GROUND,0,H);
+  gnd.addColorStop(0,'#2a2a40');
+  gnd.addColorStop(1,'#16162a');
+  cx.fillStyle=gnd; cx.fillRect(0,GROUND,W,H-GROUND);
+
+  // Ground edge line
+  cx.strokeStyle='#3a3a60'; cx.lineWidth=2;
+  cx.beginPath(); cx.moveTo(0,GROUND); cx.lineTo(W,GROUND); cx.stroke();
+
+  // Runway dashes
+  cx.save(); cx.globalAlpha=.25; cx.strokeStyle='#555580'; cx.lineWidth=1;
+  cx.setLineDash([22,18]);
+  cx.beginPath(); cx.moveTo(0,GROUND+28); cx.lineTo(W,GROUND+28); cx.stroke();
+  cx.setLineDash([]); cx.restore();
+}
+
+function drawBuildings() {
+  const blds = [
+    {x:30,  y:GROUND-100, w:70, h:100},
+    {x:140, y:GROUND-70,  w:55, h:70},
+    {x:230, y:GROUND-130, w:90, h:130},
+    {x:370, y:GROUND-95,  w:65, h:95},
+    {x:470, y:GROUND-115, w:80, h:115},
+    {x:590, y:GROUND-80,  w:60, h:80},
+  ];
+  blds.forEach(b=>{
+    const bg=cx.createLinearGradient(b.x,b.y,b.x+b.w,b.y+b.h);
+    bg.addColorStop(0,'#14142a'); bg.addColorStop(1,'#0e0e1e');
+    rr(b.x,b.y,b.w,b.h,3,null,'#222244',1);
+    cx.fillStyle=bg; cx.fill();
+    // windows
+    const cols=3, rows=Math.floor(b.h/22);
+    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
+      const wx=b.x+7+c*(b.w-14)/Math.max(1,cols-1);
+      const wy=b.y+8+r*22;
+      const lit=Math.sin(wx*7.1+wy*5.3+b.x)>.1;
+      cx.fillStyle=lit?`rgba(255,220,120,${.25+Math.abs(Math.sin(wx+tick*.001))*.12})`:'#1a1a30';
+      rr(wx-4,wy,8,12,1,null,null); cx.fill();
+    }
+  });
+
+  // Mission control on right
+  rr(680,GROUND-65,100,65,4,null,'#1a4a7a',1.5);
+  const mcbg=cx.createLinearGradient(680,GROUND-65,780,GROUND);
+  mcbg.addColorStop(0,'#0a1a30'); mcbg.addColorStop(1,'#0a0a20');
+  cx.fillStyle=mcbg; cx.fill();
+  cx.fillStyle='#2266aa'; cx.fillRect(690,GROUND-30,80,18);
+  cx.fillStyle='#aaddff'; cx.font='bold 9px Courier New';
+  cx.textAlign='center'; cx.fillText('MISSION CTRL',730,GROUND-17);
+  // blinking light
+  cx.fillStyle=Math.sin(tick*.08)>0?'#ff3333':'#550000';
+  cx.shadowColor='#ff0000'; cx.shadowBlur=6;
+  cx.beginPath(); cx.arc(720,GROUND-60,3,0,Math.PI*2); cx.fill();
+  cx.shadowBlur=0;
+}
+
+function drawLaunchPad() {
+  // Gantry tower
+  cx.fillStyle='#2a3a50';
+  cx.fillRect(PAD_X+40,PAD_Y-230,10,230);
+  cx.fillRect(PAD_X+40,PAD_Y-230,32,8);
+  for (let i=1;i<=5;i++) {
+    cx.fillStyle='#223040';
+    cx.fillRect(PAD_X+40, PAD_Y-i*42, 32, 4);
+  }
+  // Tower light
+  const tl = Math.sin(tick*.06)>0;
+  cx.fillStyle=tl?'#ff4444':'#441111';
+  cx.shadowColor='#ff2222'; cx.shadowBlur=tl?8:0;
+  cx.beginPath(); cx.arc(PAD_X+72,PAD_Y-228,4,0,Math.PI*2); cx.fill();
+  cx.shadowBlur=0;
+
+  // Launch platform
+  rr(PAD_X-55,PAD_Y-16,110,16,3,'#3a4a60','#5566aa',1.5);
+  rr(PAD_X-50,PAD_Y,100,12,2,'#2a3a50','#445588',1);
+  // Blast deflector
+  cx.fillStyle='#333348';
+  cx.beginPath(); cx.moveTo(PAD_X-40,PAD_Y+12); cx.lineTo(PAD_X+40,PAD_Y+12);
+  cx.lineTo(PAD_X+60,PAD_Y+30); cx.lineTo(PAD_X-60,PAD_Y+30); cx.closePath(); cx.fill();
+}
+
+// ── PHASE: TITLE ─────────────────────────────────────────────────────────────
+function drawTitle() {
+  // Big title
+  cx.save();
+  const glow = .5+.5*Math.sin(tick*.03);
+  cx.font='bold 60px Courier New'; cx.textAlign='center';
+  cx.shadowColor=`rgba(80,160,255,${glow})`; cx.shadowBlur=25+glow*15;
+  cx.fillStyle='#88ccff'; cx.fillText('ROCKET BUILDER',W/2,120);
+
+  cx.font='bold 26px Courier New';
+  cx.fillStyle='#ff8855'; cx.shadowColor='#ff4400'; cx.shadowBlur=10;
+  cx.fillText('A R C A D E',W/2,162);
+  cx.shadowBlur=0;
+
+  cx.font='15px Courier New'; cx.fillStyle='#6677aa';
+  cx.fillText('Design  .  Build  .  Paint  .  Launch',W/2,200);
+
+  // Animated title rocket
+  const ry = 360 + Math.sin(tick*.04)*8;
+  drawRocket(W/2, ry, PART_IDS, { nose:'#aad8ff', body1:'#ffffff', body2:'#dde8ff', engine:'#8899bb', fins:'#aab0cc' }, true);
+
+  // Sparkles on rocket
+  if (tick%6===0) starSpark(W/2+(Math.random()-.5)*40, ry-150-Math.random()*100, 2, 3, 40);
+
+  // Start button
+  const bx=W/2-90, by=510, bw=180, bh=52;
+  const bh2=inBox(mouse.x,mouse.y,bx,by,bw,bh);
+  const bcol = bh2 ? '#4477cc':'#224488';
+  rr(bx,by,bw,bh,10,bcol,'#88aaff',bh2?2:1);
+  if (bh2) { cx.shadowColor='#4488ff'; cx.shadowBlur=15; }
+  cx.fillStyle='#ddeeff'; cx.font='bold 18px Courier New'; cx.textAlign='center';
+  cx.fillText('START GAME',W/2,by+bh*.58);
+  cx.shadowBlur=0;
+  cx.restore();
+
+  if (bh2 && mouse.clicked) {
+    phase='COLLECT';
+    notify('Drive the truck to collect all 5 rocket parts. Use ARROW KEYS and SPACE.', 220);
+  }
+}
+
+// ── PHASE: COLLECT ───────────────────────────────────────────────────────────
+function updateCollect() {
+  updateTruck();
+  const sp = K[' '], rising = sp && !prevSpace;
+
+  if (rising) {
+    if (truck.carrying===null) {
+      // pick up nearest uncollected part
+      for (const id of PART_IDS) {
+        if (!partCollected[id]) {
+          const pos = PART_POS[id];
+          if (Math.abs(truck.x-pos.x)<55) {
+            truck.carrying=id; partCollected[id]=true;
+            starSpark(pos.x, pos.y-20, 12, 5);
+            notify(`Picked up ${PART_NAMES[id]}! Deliver it to the launch pad.`, 110);
+            break;
+          }
+        }
+      }
+    } else {
+      // drop – check if near launch pad drop zone
+      if (Math.abs(truck.x-PAD_X)<80) {
+        const id=truck.carrying;
+        partDelivered[id]=true; truck.carrying=null;
+        assembled.push(id);
+        starSpark(PAD_X, PAD_Y-30, 20, 6);
+        notify(`Delivered ${PART_NAMES[id]}!`, 90);
+
+        if (PART_IDS.every(id=>partDelivered[id])) {
+          setTimeout(()=>{ phase='ASSEMBLE'; assembled=[]; notify('All parts here! Click each part slot to assemble the rocket.',200); }, 1200);
+        }
+      } else {
+        // drop in place
+        const id=truck.carrying;
+        partCollected[id]=false; truck.carrying=null;
+        PART_POS[id].x=truck.x;
+      }
+    }
+  }
+  prevSpace=sp;
+}
+
+function drawCollect() {
+  PART_IDS.forEach((id,i)=>{
+    if (partDelivered[id]) return;
+    const pos = PART_POS[id];
+    if (partCollected[id]) return; // on truck
+
+    const glow=.4+.6*Math.abs(Math.sin(tick*.05+i));
+    cx.save(); cx.shadowColor='#aaccff'; cx.shadowBlur=12*glow;
+    drawPartMini(id, pos.x, pos.y-22, 1.6, PART_COLS[id]);
+    cx.restore();
+
+    // label
+    cx.fillStyle='rgba(180,200,255,.8)'; cx.font='10px Courier New';
+    cx.textAlign='center'; cx.fillText(PART_NAMES[id], pos.x, pos.y-46);
+
+    // proximity prompt
+    if (Math.abs(truck.x-pos.x)<60) {
+      cx.fillStyle='#ffdd44'; cx.font='bold 11px Courier New';
+      cx.fillText('[SPACE] Pick Up',pos.x,pos.y-62);
+    }
+  });
+
+  // Drop zone indicator
+  if (truck.carrying) {
+    const a=.3+.4*Math.abs(Math.sin(tick*.08));
+    cx.save(); cx.globalAlpha=a;
+    cx.strokeStyle='#44ff88'; cx.lineWidth=2; cx.setLineDash([6,5]);
+    cx.strokeRect(PAD_X-60,PAD_Y-300,120,300);
+    cx.setLineDash([]);
+    cx.fillStyle='#44ff88'; cx.font='bold 11px Courier New'; cx.textAlign='center';
+    cx.fillText('DROP ZONE',PAD_X,PAD_Y-308);
+    cx.restore();
+  }
+
+  // Parts counter
+  const n=PART_IDS.filter(id=>partDelivered[id]).length;
+  cx.fillStyle='#6688bb'; cx.font='13px Courier New'; cx.textAlign='left';
+  cx.fillText(`Parts collected: ${n} / ${PART_IDS.length}`,18,28);
+
+  // Delivered parts stacked near pad
+  const delIds=PART_IDS.filter(id=>partDelivered[id]);
+  delIds.forEach((id,i)=>{
+    drawPartMini(id, PAD_X-60+i*25, PAD_Y-20, 0.9, PART_COLS[id]);
+  });
+}
+
+// ── PHASE: ASSEMBLE ───────────────────────────────────────────────────────────
+function drawAssemble() {
+  // Ghost silhouette
+  cx.save(); cx.globalAlpha=.12;
+  drawRocket(PAD_X, PAD_Y, PART_IDS, {nose:'#fff',body1:'#fff',body2:'#fff',engine:'#fff',fins:'#fff'}, false);
+  cx.restore();
+
+  // Draw assembled so far
+  drawRocket(PAD_X, PAD_Y, assembled, paintColor, true);
+
+  // Left panel
+  rr(16,72,210,385,10,'rgba(6,10,28,.92)','#2244aa',1.5);
+  cx.fillStyle='#88aaff'; cx.font='bold 13px Courier New';
+  cx.textAlign='center'; cx.fillText('ASSEMBLY BAY',121,97);
+
+  PART_IDS.forEach((id,i)=>{
+    const placed=assembled.includes(id);
+    const isNext=i===assembled.length;
+    const py=120+i*62, px=121;
+
+    rr(28,py-22,185,52,6,
+      placed?'rgba(0,80,0,.35)':isNext?'rgba(70,60,0,.4)':'rgba(20,20,50,.4)',
+      placed?'#00aa44':isNext?'#aaaa00':'#334466', isNext?2:1);
+
+    if (!placed) drawPartMini(id, 65, py+4, 1.1, PART_COLS[id]);
+    cx.fillStyle=placed?'#44dd44':isNext?'#ffdd44':'#7788aa';
+    cx.font=`${isNext?'bold ':' '}11px Courier New`;
+    cx.textAlign='left';
+    cx.fillText(placed?'[PLACED]':PART_NAMES[id], 93, py);
+    if (isNext) { cx.fillStyle='#ffdd44'; cx.font='10px Courier New'; cx.fillText('Click to place!',93,py+14); }
+
+    // click detection
+    if (isNext && mouse.clicked && inBox(mouse.x,mouse.y,28,py-22,185,52)) {
+      assembled.push(id);
+      starSpark(PAD_X, PAD_Y-50-i*55, 18, 6);
+      if (assembled.length===PART_IDS.length) {
+        setTimeout(()=>{ phase='PAINT'; notify('Looking sharp! Now paint your rocket. Pick a color and click sections.',200); },900);
+      }
+    }
+  });
+
+  cx.fillStyle='#555577'; cx.font='12px Courier New'; cx.textAlign='center';
+  cx.fillText('Click each part to assemble',W/2,28);
+}
+
+// ── PHASE: PAINT ─────────────────────────────────────────────────────────────
+const PAINTS = ['#ff4444','#ff8800','#ffdd00','#44cc44','#22aaff','#8844ff','#ff44aa','#ffffff','#aaaaaa','#222222'];
+let paintSel = 0; // 0-9 or 10=rainbow
+
+function drawPaint() {
+  drawRocket(PAD_X, PAD_Y, PART_IDS, paintColor, true);
+
+  // Panel
+  rr(16,72,210,415,10,'rgba(6,10,28,.92)','#aa5522',1.5);
+  cx.fillStyle='#ffaa66'; cx.font='bold 13px Courier New';
+  cx.textAlign='center'; cx.fillText('PAINT STATION',121,97);
+  cx.fillStyle='#7788aa'; cx.font='10px Courier New';
+  cx.fillText('Pick color, click rocket',121,113);
+
+  // Color swatches
+  PAINTS.forEach((col,i)=>{
+    const row=Math.floor(i/2), c=i%2;
+    const sx=42+c*84, sy=128+row*44;
+    const sel=i===paintSel;
+    cx.shadowColor=col; cx.shadowBlur=sel?16:4;
+    cx.fillStyle=col; cx.strokeStyle=sel?'#fff':'#555'; cx.lineWidth=sel?3:1;
+    cx.beginPath(); cx.arc(sx+17,sy+17,17,0,Math.PI*2); cx.fill(); cx.stroke();
+    cx.shadowBlur=0;
+    if (mouse.clicked && inCirc(mouse.x,mouse.y,sx+17,sy+17,22)) paintSel=i;
+  });
+
+  // Rainbow swatch
+  const ry2=128+5*44, sel10=paintSel===10;
+  const rg=cx.createLinearGradient(32,ry2,200,ry2+36);
+  ['#f00','#ff0','#0f0','#0ff','#00f','#f0f','#f00'].forEach((c,i)=>rg.addColorStop(i/6,c));
+  rr(32,ry2,170,36,8,null,sel10?'#fff':'#555',sel10?3:1);
+  cx.fillStyle=rg; cx.fill();
+  cx.fillStyle=sel10?'#000':'#fff'; cx.font='bold 12px Courier New'; cx.textAlign='center';
+  cx.fillText('RAINBOW',117,ry2+23);
+  if (mouse.clicked && inBox(mouse.x,mouse.y,32,ry2,170,36)) paintSel=10;
+
+  // Selected preview
+  cx.fillStyle='#8899bb'; cx.font='11px Courier New'; cx.textAlign='center';
+  cx.fillText('Selected:',121,ry2+54);
+  if (paintSel<10) {
+    cx.fillStyle=PAINTS[paintSel]; cx.shadowColor=PAINTS[paintSel]; cx.shadowBlur=10;
+    cx.beginPath(); cx.arc(121,ry2+72,12,0,Math.PI*2); cx.fill(); cx.shadowBlur=0;
+  } else {
+    const pg=cx.createLinearGradient(100,ry2+56,142,ry2+88);
+    ['#f00','#ff0','#0f0','#0ff','#00f','#f0f'].forEach((c,i)=>pg.addColorStop(i/5,c));
+    cx.fillStyle=pg; cx.beginPath(); cx.arc(121,ry2+72,12,0,Math.PI*2); cx.fill();
+  }
+
+  // Done button
+  const dh=inBox(mouse.x,mouse.y,PAD_X-70,PAD_Y-340,140,42);
+  rr(PAD_X-70,PAD_Y-340,140,42,8,dh?'#226633':'#114422',dh?'#44ff88':'#226644',dh?2:1);
+  if (dh) { cx.shadowColor='#44ff66'; cx.shadowBlur=12; }
+  cx.fillStyle=dh?'#ccffdd':'#88ddaa'; cx.font='bold 14px Courier New'; cx.textAlign='center';
+  cx.fillText('DONE PAINTING',PAD_X,PAD_Y-314);
+  cx.shadowBlur=0;
+  if (dh && mouse.clicked) {
+    phase='GLUE';
+    notify('Apply glue to every joint — click the glowing spots on the rocket!', 200);
+  }
+
+  // Hit zones for painting rocket sections
+  const hitZones = {
+    nose:  {x:PAD_X-22,y:PAD_Y-290,w:44,h:75},
+    body1: {x:PAD_X-19,y:PAD_Y-218,w:38,h:88},
+    body2: {x:PAD_X-19,y:PAD_Y-132,w:38,h:68},
+    engine:{x:PAD_X-22,y:PAD_Y-70, w:44,h:62},
+    fins:  {x:PAD_X-42,y:PAD_Y-80, w:84,h:80},
+  };
+  PART_IDS.forEach(id=>{
+    const z=hitZones[id];
+    if (inBox(mouse.x,mouse.y,z.x,z.y,z.w,z.h)) {
+      cx.strokeStyle='rgba(255,240,100,.65)'; cx.lineWidth=2;
+      cx.setLineDash([4,4]); cx.strokeRect(z.x,z.y,z.w,z.h); cx.setLineDash([]);
+      if (mouse.clicked) {
+        const col = paintSel<10 ? PAINTS[paintSel] : 'rainbow';
+        paintColor[id]=col;
+        starSpark(z.x+z.w/2, z.y+z.h/2, 12, 4, 50);
+        notify(`Painted ${PART_NAMES[id]}!`,60);
+      }
+    }
+  });
+
+  cx.fillStyle='#555577'; cx.font='12px Courier New'; cx.textAlign='center';
+  cx.fillText('Click rocket sections to paint them',W/2,28);
+}
+
+// ── PHASE: GLUE ──────────────────────────────────────────────────────────────
+const JOINTS = [
+  {id:'nose',  rx:0,   ry:-215, label:'Nose joint'},
+  {id:'body1', rx:0,   ry:-130, label:'Body joint 1'},
+  {id:'body2', rx:0,   ry:-70,  label:'Body joint 2'},
+  {id:'fins',  rx:-30, ry:-55,  label:'Left fin joint'},
+  {id:'fins2', rx:30,  ry:-55,  label:'Right fin joint'},
+];
+let gluedJoints=new Set();
+
+function drawGlue() {
+  drawRocket(PAD_X, PAD_Y, PART_IDS, paintColor, true);
+
+  // Panel
+  rr(16,72,210,240,10,'rgba(6,10,28,.92)','#aaaa22',1.5);
+  cx.fillStyle='#eeee66'; cx.font='bold 13px Courier New';
+  cx.textAlign='center'; cx.fillText('GLUE STATION',121,97);
+  cx.fillStyle='#aaaaaa'; cx.font='10px Courier New';
+  cx.fillText('Click glowing joints',121,113);
+  cx.fillText(`Glued: ${gluedJoints.size} / ${JOINTS.length}`,121,132);
+
+  // Progress bar
+  rr(30,145,162,14,4,'#111122','#333366',1);
+  if (gluedJoints.size>0) {
+    const pw=160*(gluedJoints.size/JOINTS.length);
+    rr(31,146,pw,12,3,'#cccc44',null);
+  }
+
+  // Glue cursor
+  if (gluedJoints.size<JOINTS.length) {
+    cx.save(); cx.translate(mouse.x,mouse.y);
+    cx.fillStyle='#ffffa0'; cx.strokeStyle='#aaaa40'; cx.lineWidth=1;
+    rr(-4,-20,8,16,2,null,null); cx.fill(); cx.stroke();
+    // nozzle
+    cx.fillStyle='#ffffff';
+    cx.beginPath(); cx.moveTo(-3,-4); cx.lineTo(3,-4); cx.lineTo(1,2); cx.lineTo(-1,2); cx.closePath(); cx.fill();
+    cx.restore();
+  }
+
+  JOINTS.forEach(j=>{
+    const jx=PAD_X+j.rx, jy=PAD_Y+j.ry;
+    if (gluedJoints.has(j.id)) {
+      // Done glyph
+      cx.fillStyle='#44ff44'; cx.shadowColor='#00ff00'; cx.shadowBlur=8;
+      cx.beginPath(); cx.arc(jx,jy,8,0,Math.PI*2); cx.fill();
+      cx.shadowBlur=0;
+      cx.strokeStyle='#fff'; cx.lineWidth=2;
+      cx.beginPath(); cx.moveTo(jx-4,jy); cx.lineTo(jx-1,jy+4); cx.lineTo(jx+5,jy-4); cx.stroke();
+    } else {
+      const g=.5+.5*Math.sin(tick*.12);
+      cx.strokeStyle=`rgba(255,230,0,${.5+g*.5})`; cx.lineWidth=2+g;
+      cx.setLineDash([3,3]);
+      cx.beginPath(); cx.arc(jx,jy,13,0,Math.PI*2); cx.stroke();
+      cx.setLineDash([]);
+
+      if (inCirc(mouse.x,mouse.y,jx,jy,20)) {
+        cx.strokeStyle='#fff'; cx.lineWidth=2.5;
+        cx.beginPath(); cx.arc(jx,jy,16,0,Math.PI*2); cx.stroke();
+        // Tooltip
+        rr(jx-55,jy-36,110,20,4,'rgba(0,0,0,.85)','#888',1);
+        cx.fillStyle='#fff'; cx.font='10px Courier New'; cx.textAlign='center';
+        cx.fillText(j.label,jx,jy-22);
+
+        if (mouse.clicked) {
+          gluedJoints.add(j.id);
+          starSpark(jx,jy,16,5,55);
+          // glue drip
+          for (let i=0;i<6;i++) P.push({x:jx,y:jy,vx:(Math.random()-.5)*2,vy:Math.random()*2.5,
+            life:45,ml:45,col:'#fffff0',sz:3,star:false});
+          if (gluedJoints.size===JOINTS.length) {
+            setTimeout(()=>{ phase='FUEL'; notify('All joints glued! Now fuel up — drive truck to the fuel station.',200); },1000);
+          }
+        }
+      }
+    }
+  });
+
+  cx.fillStyle='#555577'; cx.font='12px Courier New'; cx.textAlign='center';
+  cx.fillText('Click each glowing joint to apply glue',W/2,28);
+}
+
+// ── PHASE: FUEL ──────────────────────────────────────────────────────────────
+let fuelTruckX = -120;
+let fuelArrived = false;
+let fuelDone = false;
+
+function initFuel() { fuelTruckX=-120; fuelArrived=false; fuelDone=false; fuelPct=0; }
+
+function updateFuel() {
+  if (!fuelArrived) {
+    fuelTruckX=Math.min(PAD_X-110, fuelTruckX+2.2);
+    if (fuelTruckX>=PAD_X-112) { fuelArrived=true; notify('Fuel truck ready! Hold SPACE to fill the tank.',160); }
+  }
+  if (fuelArrived && !fuelDone && K[' ']) {
+    fuelPct=Math.min(100,fuelPct+.7);
+    if (tick%3===0) {
+      P.push({x:fuelTruckX+25+Math.random()*20,y:PAD_Y-30,
+              vx:.6,vy:-.4-Math.random()*.4,life:18,ml:18,
+              col:`hsl(${20+Math.random()*30},100%,55%)`,sz:3,star:false});
+    }
+    if (fuelPct>=100) { fuelDone=true; notify('Full tank! Ready for pre-launch checks.',130); setTimeout(()=>{phase='PRELAUNCH';},2000); }
+  }
+}
+
+function drawFuelTruck(x,y) {
+  cx.save(); cx.translate(x,y);
+  const fb=cx.createLinearGradient(-38,-32,-38,0);
+  fb.addColorStop(0,'#993311'); fb.addColorStop(1,'#551100');
+  rr(-38,-32,76,32,5,null,'#cc5533',1.5); cx.fillStyle=fb; cx.fill();
+  // fuel tank cylinder
+  rr(-36,-46,60,16,8,'#cc6622','#ee8844',1);
+  cx.fillStyle='#fff'; cx.font='bold 8px Courier New'; cx.textAlign='center'; cx.fillText('FUEL',-8,-33);
+  // cabin
+  rr(24,-44,18,14,3,'#bb5522','#dd7744',1);
+  // headlight
+  cx.fillStyle='#ffff88'; cx.shadowColor='#ffff00'; cx.shadowBlur=6;
+  cx.beginPath(); cx.arc(38,-14,4,0,Math.PI*2); cx.fill(); cx.shadowBlur=0;
+  // wheels
+  for (const wx of [-20,22]) {
+    cx.fillStyle='#181828'; cx.strokeStyle='#444455'; cx.lineWidth=1.5;
+    cx.beginPath(); cx.arc(wx,2,12,0,Math.PI*2); cx.fill(); cx.stroke();
+    cx.fillStyle='#2a2a40'; cx.beginPath(); cx.arc(wx,2,7,0,Math.PI*2); cx.fill();
+    cx.fillStyle='#8899aa'; cx.beginPath(); cx.arc(wx,2,3,0,Math.PI*2); cx.fill();
+  }
+  cx.restore();
+}
+
+function drawFuel() {
+  drawRocket(PAD_X, PAD_Y, PART_IDS, paintColor, true);
+
+  // Fuel hose
+  if (fuelArrived) {
+    cx.strokeStyle='#ff7722'; cx.lineWidth=5; cx.lineCap='round';
+    cx.beginPath();
+    cx.moveTo(fuelTruckX+10, PAD_Y-24);
+    cx.bezierCurveTo(fuelTruckX+60,PAD_Y-80, PAD_X-60,PAD_Y-80, PAD_X-18,PAD_Y-80);
+    cx.stroke();
+    cx.strokeStyle='#ffaa44'; cx.lineWidth=2; cx.stroke();
+  }
+
+  drawFuelTruck(fuelTruckX, PAD_Y);
+
+  // Gauge panel
+  rr(16,72,210,295,10,'rgba(6,10,28,.92)','#aa4411',1.5);
+  cx.fillStyle='#ff8844'; cx.font='bold 13px Courier New';
+  cx.textAlign='center'; cx.fillText('FUEL STATION',121,97);
+
+  // Gauge body
+  rr(46,118,150,160,6,'#080818','#223355',1);
+  // Fill
+  const fh=148*(fuelPct/100);
+  if (fuelPct>0) {
+    const fg=cx.createLinearGradient(0,270-fh,0,270);
+    fg.addColorStop(0,'#ffcc00'); fg.addColorStop(.5,'#ff6600'); fg.addColorStop(1,'#ff1100');
+    cx.fillStyle=fg; cx.shadowColor='#ff5500'; cx.shadowBlur=8;
+    rr(50,122+(148-fh),142,fh,3,null,null); cx.fill(); cx.shadowBlur=0;
+  }
+  // Tick marks
+  cx.strokeStyle='#334466'; cx.lineWidth=1;
+  for (let i=0;i<=4;i++) {
+    const gy=122+i*37;
+    cx.beginPath(); cx.moveTo(46,gy); cx.lineTo(196,gy); cx.stroke();
+    cx.fillStyle='#556677'; cx.font='10px Courier New'; cx.textAlign='right';
+    cx.fillText(`${100-i*25}%`,44,gy+4);
+  }
+
+  cx.fillStyle='#ff8844'; cx.font='bold 20px Courier New'; cx.textAlign='center';
+  cx.fillText(`${fuelPct|0}%`,121,308);
+
+  if (!fuelArrived) {
+    cx.fillStyle='#556699'; cx.font='12px Courier New'; cx.fillText('Fuel truck arriving...',121,338);
+  } else if (!fuelDone) {
+    const p=Math.sin(tick*.1)>.0?'#ffee44':'#ff8800';
+    cx.fillStyle=p; cx.font='bold 12px Courier New'; cx.fillText('HOLD [SPACE] to fuel!',121,338);
+    cx.fillStyle='#556699'; cx.font='11px Courier New'; cx.fillText('Keep holding until full',121,356);
+  } else {
+    cx.fillStyle='#44ff88'; cx.font='bold 13px Courier New'; cx.fillText('TANK FULL!',121,338);
+  }
+
+  cx.fillStyle='#555577'; cx.font='12px Courier New'; cx.textAlign='center';
+  cx.fillText('Hold SPACE at the fuel station',W/2,28);
+}
+
+// ── PHASE: PRELAUNCH ─────────────────────────────────────────────────────────
+let sysCheckIdx = 0;
+let sysCheckTimer = 0;
+const SYSCHECKS = [
+  'Structural integrity........OK',
+  'Glue bond verification......OK',
+  'Fuel level..................100%',
+  'Trajectory computed.........OK',
+  'Weather window..............CLEAR',
+  'All systems nominal.........GO',
+];
+
+function drawPrelaunch() {
+  drawRocket(PAD_X, PAD_Y, PART_IDS, paintColor, true);
+
+  sysCheckTimer++;
+  if (sysCheckTimer>48 && sysCheckIdx<SYSCHECKS.length-1) { sysCheckTimer=0; sysCheckIdx++; }
+
+  // Panel
+  rr(16,72,235,350,10,'rgba(6,10,28,.92)','#226633',1.5);
+  cx.fillStyle='#44ff88'; cx.font='bold 13px Courier New';
+  cx.textAlign='left'; cx.fillText('LAUNCH CHECKLIST',34,97);
+
+  for (let i=0;i<=sysCheckIdx;i++) {
+    const last=(i===SYSCHECKS.length-1);
+    cx.fillStyle=last?'#44ff44':'#66ddaa';
+    cx.font=`${last?'bold ':' '}10px Courier New`;
+    cx.fillText('>  '+SYSCHECKS[i],32,120+i*34);
+    if (i===sysCheckIdx && !last && Math.sin(tick*.2)>0) {
+      cx.fillStyle='#fff'; cx.fillRect(32+cx.measureText('>  '+SYSCHECKS[i]).width+2, 108+i*34, 7,11);
+    }
+  }
+
+  // IGNITION button
+  if (sysCheckIdx>=SYSCHECKS.length-1) {
+    const bx=PAD_X, by=PAD_Y-360;
+    const g=.5+.5*Math.sin(tick*.06);
+    cx.shadowColor='#ff2200'; cx.shadowBlur=18+g*18;
+    cx.strokeStyle=`rgba(255,${60+g*80|0},0,${.5+g*.5})`; cx.lineWidth=4;
+    cx.beginPath(); cx.arc(bx,by,48,0,Math.PI*2); cx.stroke();
+    cx.shadowBlur=0;
+
+    const hover=inCirc(mouse.x,mouse.y,bx,by,48);
+    rr(bx-56,by-24,112,48,12,hover?'#cc2200':'#881100',hover?'#ff8844':'#aa3322',hover?3:2);
+    if (hover) { cx.shadowColor='#ff4422'; cx.shadowBlur=20; }
+    cx.fillStyle=hover?'#fff':'#ffddcc'; cx.font='bold 17px Courier New';
+    cx.textAlign='center'; cx.fillText('IGNITION',bx,by+6);
+    cx.shadowBlur=0;
+
+    if (hover && mouse.clicked) {
+      phase='COUNTDOWN'; countdownVal=10; countdownSub=0;
+      starSpark(bx,by,25,8,80);
+    }
+  }
+}
+
+// ── PHASE: COUNTDOWN ─────────────────────────────────────────────────────────
+let countdownVal = 10;
+let countdownSub = 0; // sub-ticks
+let launchRocketY = 0;
+let launchRocketVY = 0;
+let launchTick = 0;
+
+function updateCountdown() {
+  countdownSub++;
+  if (countdownSub>=62) {
+    countdownSub=0; countdownVal--;
+    // Burst
+    for (let i=0;i<16;i++) {
+      const a=i/16*Math.PI*2;
+      P.push({x:PAD_X,y:PAD_Y-140,vx:Math.cos(a)*(3+Math.random()*3),vy:Math.sin(a)*(3+Math.random()*3),
+              life:35,ml:35,col:countdownVal<=3?'#ff4400':'#4488ff',sz:2+Math.random()*2,star:false});
+    }
+    if (countdownVal<0) { phase='LAUNCH'; launchRocketY=0; launchRocketVY=0.3; launchTick=0; }
+  }
+  // Pre-ignition flame
+  if (countdownVal<=3) {
+    for (let i=0;i<4;i++) fireParticle(PAD_X, PAD_Y+2, .6);
+  }
+}
+
+function drawCountdown() {
+  drawRocket(PAD_X, PAD_Y, PART_IDS, paintColor, true);
+
+  const n = countdownVal<=0 ? 'LIFTOFF!' : String(countdownVal);
+  const frac = countdownSub/62;
+  const scl = 1+(.3*(1-frac));
+  const col = countdownVal<=3?'#ff4400':countdownVal<=6?'#ffaa00':'#88ccff';
+
+  cx.save();
+  cx.translate(W/2, H/2-30);
+  cx.scale(scl,scl);
+  cx.shadowColor=col; cx.shadowBlur=35;
+  cx.fillStyle=col; cx.font='bold 120px Courier New';
+  cx.textAlign='center'; cx.textBaseline='middle';
+  cx.fillText(n,0,0);
+  cx.shadowBlur=0; cx.restore();
+
+  cx.fillStyle='#666688'; cx.font='16px Courier New';
+  cx.textAlign='center'; cx.textBaseline='alphabetic';
+  cx.fillText(`T-MINUS ${Math.max(0,countdownVal)}`, W/2, H/2+80);
+
+  // Progress bar
+  const bc=countdownVal<=3?'#ff4400':'#4488ff';
+  cx.fillStyle=bc; cx.shadowColor=bc; cx.shadowBlur=6;
+  cx.fillRect(0,H-16,W*(1-Math.max(0,countdownVal)/10),16);
+  cx.shadowBlur=0;
+}
+
+// ── PHASE: LAUNCH ─────────────────────────────────────────────────────────────
+function updateLaunch() {
+  launchTick++;
+  launchRocketVY+=.18;
+  launchRocketY-=launchRocketVY;
+
+  const ry=PAD_Y+launchRocketY;
+
+  // Main engine fire
+  for (let i=0;i<10;i++) fireParticle(PAD_X, ry+4, 1.2);
+  for (let i=0;i<5;i++) smokeParticle(PAD_X, ry+16);
+
+  // Rainbow sparkle trail
+  if (launchTick%2===0) {
+    for (let i=0;i<4;i++) {
+      const hue=(launchTick*4+i*55)%360;
+      P.push({x:PAD_X+(Math.random()-.5)*28, y:ry-(Math.random()*30),
+              vx:(Math.random()-.5)*5, vy:(Math.random()-.5)*3+1.5,
+              life:55,ml:55,col:`hsl(${hue},100%,65%)`,sz:3+Math.random()*3,star:true});
+    }
+  }
+  // Ambient sparkles
+  if (launchTick%3===0) starSpark(Math.random()*W, Math.random()*(GROUND*0.8), 2, 4, 40);
+
+  // Ground shockwave early on
+  if (launchTick<25) {
+    for (let i=0;i<4;i++) {
+      P.push({x:PAD_X+(Math.random()-.5)*(launchTick*5),y:PAD_Y+Math.random()*18,
+              vx:(Math.random()-.5)*6,vy:-(Math.random()*2),
+              life:28,ml:28,col:'#8888a0',sz:6+Math.random()*6,star:false});
+    }
+  }
+}
+
+function drawLaunch() {
+  const ry=PAD_Y+launchRocketY;
+  if (ry>-320) {
+    drawRocket(PAD_X, ry, PART_IDS, paintColor, true);
+    // Engine glow
+    const gs=22+Math.sin(launchTick*.15)*6;
+    const eg=cx.createRadialGradient(PAD_X,ry+4,0,PAD_X,ry+4,gs);
+    eg.addColorStop(0,'rgba(255,200,80,.85)');
+    eg.addColorStop(.5,'rgba(255,90,0,.4)');
+    eg.addColorStop(1,'rgba(255,40,0,0)');
+    cx.fillStyle=eg;
+    cx.beginPath(); cx.arc(PAD_X,ry+4,gs,0,Math.PI*2); cx.fill();
+  }
+
+  // Launch pad heat glow
+  const hg=cx.createRadialGradient(PAD_X,PAD_Y,0,PAD_X,PAD_Y,90);
+  hg.addColorStop(0,'rgba(255,130,0,.28)');
+  hg.addColorStop(1,'rgba(255,40,0,0)');
+  cx.fillStyle=hg;
+  cx.beginPath(); cx.ellipse(PAD_X,PAD_Y+5,90,22,0,0,Math.PI*2); cx.fill();
+
+  // LIFTOFF text
+  if (launchTick<130) {
+    const a=Math.min(1,launchTick/18)*Math.max(0,1-(launchTick-85)/45);
+    cx.save(); cx.globalAlpha=a;
+    cx.font='bold 68px Courier New'; cx.textAlign='center';
+    cx.fillStyle='#ffee44'; cx.shadowColor='#ff8800'; cx.shadowBlur=20;
+    cx.fillText('LIFTOFF!',W/2,H/2);
+    cx.shadowBlur=0; cx.restore();
+  }
+
+  if (ry<-300) drawWin();
+}
+
+// ── WIN SCREEN ────────────────────────────────────────────────────────────────
+function drawWin() {
+  // Rainbow arcs
+  for (let i=0;i<7;i++) {
+    const hue=i/7*360;
+    const ang=(launchTick*.008+i/7)*Math.PI*2;
+    const rad=180+Math.sin(launchTick*.025)*40;
+    cx.strokeStyle=`hsla(${hue},100%,65%,.45)`; cx.lineWidth=9;
+    cx.beginPath(); cx.arc(W/2,H/2,rad-i*12,ang,ang+Math.PI*.22); cx.stroke();
+  }
+
+  const wa=Math.min(1,(launchTick-100)/65);
+  if (wa>0) {
+    cx.save(); cx.globalAlpha=wa;
+    cx.font='bold 58px Courier New'; cx.textAlign='center';
+    cx.fillStyle='#88ffaa'; cx.shadowColor='#44ff88'; cx.shadowBlur=22;
+    cx.fillText('MISSION SUCCESS!',W/2,H/2-55);
+    cx.shadowBlur=0;
+    cx.font='22px Courier New'; cx.fillStyle='#aaddff';
+    cx.shadowColor='#88bbff'; cx.shadowBlur=10;
+    cx.fillText('Your rocket reached the stars!',W/2,H/2-5);
+    cx.shadowBlur=0;
+
+    // Play again button
+    const bx=W/2-100, by=H/2+60, bw=200, bh=52;
+    const bh2=inBox(mouse.x,mouse.y,bx,by,bw,bh);
+    rr(bx,by,bw,bh,10,bh2?'#224488':'#112244','#4488ff',bh2?2:1);
+    if (bh2) { cx.shadowColor='#4488ff'; cx.shadowBlur=14; }
+    cx.fillStyle=bh2?'#ffffff':'#aaddff'; cx.font='bold 18px Courier New';
+    cx.textAlign='center'; cx.fillText('PLAY AGAIN',W/2,by+bh*.58);
+    cx.shadowBlur=0;
+    cx.restore();
+
+    if (bh2 && mouse.clicked) resetGame();
+  }
+
+  // Continuous sparkle fountain
+  if (launchTick%2===0) starSpark(Math.random()*W,Math.random()*H,3,5,55);
+}
+
+// ── RESET ─────────────────────────────────────────────────────────────────────
+function resetGame() {
+  phase='TITLE'; tick=0; P=[];
+  truck.x=150; truck.vx=0; truck.carrying=null; truck.facing=1;
+  PART_IDS.forEach(id=>{ partCollected[id]=false; partDelivered[id]=false; PART_POS[id].x=PART_DEFS_ORIG[id]; });
+  assembled=[]; paintColor={nose:'#c0c0d0',body1:'#ffffff',body2:'#e0e0ff',engine:'#778899',fins:'#9999bb'};
+  paintSel=0; gluedJoints=new Set(); fuelPct=0;
+  initFuel(); sysCheckIdx=0; sysCheckTimer=0; countdownVal=10; countdownSub=0;
+  launchRocketY=0; launchRocketVY=0; launchTick=0; prevSpace=false;
+}
+const PART_DEFS_ORIG={nose:120,body1:270,body2:410,engine:560,fins:680};
+
+// ── HUD OVERLAYS ─────────────────────────────────────────────────────────────
+const PHASE_TAGS = {
+  COLLECT:'PHASE 1 — COLLECT', ASSEMBLE:'PHASE 2 — ASSEMBLE',
+  PAINT:'PHASE 3 — PAINT', GLUE:'PHASE 4 — GLUE',
+  FUEL:'PHASE 5 — FUEL', PRELAUNCH:'PHASE 6 — PRE-LAUNCH',
+  COUNTDOWN:'COUNTDOWN', LAUNCH:'LAUNCH!'
+};
+
+function drawHUD() {
+  // Phase tag
+  const tag=PHASE_TAGS[phase];
+  if (tag) {
+    cx.fillStyle='rgba(100,160,255,.65)'; cx.font='bold 12px Courier New';
+    cx.textAlign='right'; cx.fillText(tag, W-14, 24);
+  }
+
+  // Notification
+  if (notifyTimer>0) {
+    notifyTimer--;
+    const a=Math.min(1,notifyTimer/25);
+    const tw=cx.measureText(notification).width;
+    const bw=Math.min(W-30, tw+36);
+    cx.save(); cx.globalAlpha=a;
+    rr(W/2-bw/2, 8, bw, 30, 6, 'rgba(0,6,22,.88)', '#3a5aaa', 1);
+    cx.fillStyle='#ccd8ff'; cx.font='12px Courier New';
+    cx.textAlign='center'; cx.textBaseline='middle'; cx.fillText(notification,W/2,23);
+    cx.textBaseline='alphabetic'; cx.restore();
+  }
+}
+
+// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
+function loop() {
+  tick++;
+  cx.clearRect(0,0,W,H);
+
+  if (phase==='TITLE') {
+    const bg=cx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#020110'); bg.addColorStop(1,'#0a0525');
+    cx.fillStyle=bg; cx.fillRect(0,0,W,H);
+    drawStars();
+    drawTitle();
+  } else {
+    drawBG();
+    drawBuildings();
+    drawLaunchPad();
+
+    switch(phase) {
+      case 'COLLECT':
+        updateCollect();
+        drawCollect();
+        drawTruck(truck.x, truck.y, truck.facing, truck.carrying);
+        break;
+      case 'ASSEMBLE':
+        drawAssemble();
+        break;
+      case 'PAINT':
+        drawPaint();
+        break;
+      case 'GLUE':
+        drawGlue();
+        break;
+      case 'FUEL':
+        updateFuel();
+        drawFuel();
+        break;
+      case 'PRELAUNCH':
+        drawPrelaunch();
+        break;
+      case 'COUNTDOWN':
+        updateCountdown();
+        drawCountdown();
+        break;
+      case 'LAUNCH':
+        updateLaunch();
+        drawLaunch();
+        break;
+    }
+  }
+
+  tickParticles();
+  drawParticles();
+  drawHUD();
+  mouse.clicked=false;
+  requestAnimationFrame(loop);
+}
+
+initFuel();
+notify('Welcome to Rocket Builder! Click START to begin your mission.', 280);
+loop();
+</script>
+</body>
+</html>

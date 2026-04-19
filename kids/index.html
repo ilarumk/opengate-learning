@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenGate Learning — Kids Games</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f0f1a;
+    color: #fff;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 32px 20px 24px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  header .logo {
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-size: clamp(22px, 5vw, 36px);
+    font-weight: 800;
+    background: linear-gradient(90deg, #FFD700, #FF6B35, #E91E63);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p {
+    margin-top: 8px;
+    color: #888;
+    font-size: 14px;
+  }
+
+  /* ── MAIN ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 16px 60px;
+  }
+
+  .section-title {
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 20px;
+  }
+
+  /* ── GAME GRID ── */
+  .game-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  /* ── GAME CARD ── */
+  .game-card {
+    display: block;
+    text-decoration: none;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .game-card:hover, .game-card:focus {
+    border-color: rgba(255,255,255,0.2);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    outline: none;
+  }
+
+  .card-banner {
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    opacity: 0.85;
+  }
+  .card-banner .icon {
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
+  }
+
+  .card-body {
+    padding: 16px 18px 20px;
+  }
+  .card-body h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 5px;
+  }
+  .card-body p {
+    font-size: 13px;
+    color: #888;
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .tag {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.07);
+    color: #aaa;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .play-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    text-align: center;
+    transition: filter 0.15s;
+  }
+  .play-btn:hover { filter: brightness(1.1); }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center;
+    padding: 24px 16px;
+    color: #444;
+    font-size: 12px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">OpenGate Learning</div>
+  <h1>🎮 Kids Games</h1>
+  <p>Pick a game and start playing!</p>
+</header>
+
+<main>
+  <div class="section-title">All Games</div>
+
+  <div class="game-grid">
+
+    <!-- ── GAME 1: Construction World ── -->
+    <a class="game-card" href="/kids/games/construction-world" target="_blank">
+      <div class="card-banner" style="background: linear-gradient(135deg, #1a237e, #283593);">
+        <span class="icon">🏗️</span>
+      </div>
+      <div class="card-body">
+        <h2>Construction World</h2>
+        <p>Drive trucks, build structures, fight monsters, launch rockets into space, and explore with the Paw Patrol crew!</p>
+        <div class="card-tags">
+          <span class="tag">Driving</span>
+          <span class="tag">Building</span>
+          <span class="tag">Space</span>
+          <span class="tag">Paw Patrol</span>
+        </div>
+        <div class="play-btn" style="background: linear-gradient(135deg, #FFD700, #FF6B35); color: #000;">
+          ▶ PLAY NOW
+        </div>
+      </div>
+    </a>
+
+    <!-- ── GAME 2: Rocket Builder Arcade ── -->
+    <a class="game-card" href="/kids/games/rocket-builder" target="_blank">
+      <div class="card-banner" style="background: linear-gradient(135deg, #0d1b4b, #1a237e, #4a0072);">
+        <span class="icon">🚀</span>
+      </div>
+      <div class="card-body">
+        <h2>Rocket Builder Arcade</h2>
+        <p>Design and launch your own rocket! Build it piece by piece and blast off into the stars.</p>
+        <div class="card-tags">
+          <span class="tag">Space</span>
+          <span class="tag">Building</span>
+          <span class="tag">Arcade</span>
+        </div>
+        <div class="play-btn" style="background: linear-gradient(135deg, #7C4DFF, #E040FB); color: #fff;">
+          ▶ PLAY NOW
+        </div>
+      </div>
+    </a>
+
+  </div>
+</main>
+
+<footer>
+  &copy; OpenGate Learning — opengatelearning.com
+</footer>
+
+</body>
+</html>
