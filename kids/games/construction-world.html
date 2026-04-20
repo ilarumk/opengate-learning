@@ -2186,6 +2186,363 @@ function drawDecorations(){
   }
 }
 
+// ── WORLD STRUCTURES ─────────────────────────────────────────────────────────
+function drawWorldStructures(){
+  const t=Date.now()*0.001;
+
+  // ════════════════════════════════════════════════════════
+  // 🏙️ WORLD'S TALLEST BUILDING  (Burj Khalifa inspired)
+  // position: (1680, 1480)
+  // ════════════════════════════════════════════════════════
+  (()=>{
+    const [bx,by]=w2s(1680,1490);
+    if(bx<-200||bx>canvas.width+200||by<-500||by>canvas.height+100)return;
+    ctx.save();ctx.translate(bx,by);
+
+    // Ground shadow
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.beginPath();ctx.ellipse(0,6,55,12,0,0,Math.PI*2);ctx.fill();
+
+    // Base plaza (wide)
+    ctx.fillStyle='#B0BEC5';ctx.fillRect(-60,0,120,18);
+    ctx.fillStyle='#90A4AE';ctx.fillRect(-60,0,120,5);
+
+    // Lower podium tier
+    ctx.fillStyle='#CFD8DC';ctx.fillRect(-46,-30,92,32);
+    // Podium windows
+    ctx.fillStyle='rgba(135,206,250,0.6)';
+    for(let i=0;i<6;i++)ctx.fillRect(-42+i*15,-26,10,20);
+    ctx.strokeStyle='#90A4AE';ctx.lineWidth=0.8;
+    for(let i=0;i<6;i++)ctx.strokeRect(-42+i*15,-26,10,20);
+
+    // Mid tier 1
+    ctx.fillStyle='#ECEFF1';ctx.fillRect(-34,-80,68,52);
+    const wg1=ctx.createLinearGradient(-34,-80,34,-80);
+    wg1.addColorStop(0,'#B0BEC5');wg1.addColorStop(0.5,'#ECEFF1');wg1.addColorStop(1,'#B0BEC5');
+    ctx.fillStyle=wg1;ctx.fillRect(-34,-80,68,52);
+    for(let i=0;i<4;i++){
+      ctx.fillStyle=`rgba(100,180,255,${0.5+0.2*Math.sin(t+i)})`;
+      ctx.fillRect(-30+i*16,-75,10,40);
+      ctx.strokeStyle='#78909C';ctx.lineWidth=0.7;ctx.strokeRect(-30+i*16,-75,10,40);
+    }
+
+    // Mid tier 2
+    const wg2=ctx.createLinearGradient(-24,-150,24,-150);
+    wg2.addColorStop(0,'#90A4AE');wg2.addColorStop(0.5,'#ECEFF1');wg2.addColorStop(1,'#90A4AE');
+    ctx.fillStyle=wg2;ctx.fillRect(-24,-150,48,72);
+    for(let i=0;i<3;i++){
+      ctx.fillStyle=`rgba(100,180,255,${0.5+0.15*Math.sin(t*1.3+i)})`;
+      ctx.fillRect(-20+i*14,-145,10,60);
+    }
+
+    // Upper tier
+    ctx.fillStyle='#B0BEC5';
+    ctx.beginPath();ctx.moveTo(-16,-150);ctx.lineTo(16,-150);ctx.lineTo(12,-220);ctx.lineTo(-12,-220);ctx.closePath();ctx.fill();
+    const ug=ctx.createLinearGradient(-16,-150,16,-150);
+    ug.addColorStop(0,'#78909C');ug.addColorStop(0.4,'#ECEFF1');ug.addColorStop(1,'#78909C');
+    ctx.fillStyle=ug;
+    ctx.beginPath();ctx.moveTo(-16,-150);ctx.lineTo(16,-150);ctx.lineTo(12,-220);ctx.lineTo(-12,-220);ctx.closePath();ctx.fill();
+    // Upper windows dots
+    const winFlash=0.6+0.4*Math.sin(t*2);
+    ctx.fillStyle=`rgba(160,220,255,${winFlash})`;
+    for(let row=0;row<8;row++)for(let col=0;col<2;col++)
+      ctx.fillRect(-9+col*10,-215+row*8,6,5);
+
+    // Top spire section
+    ctx.strokeStyle='#B0BEC5';ctx.lineWidth=8;
+    ctx.beginPath();ctx.moveTo(0,-220);ctx.lineTo(0,-310);ctx.stroke();
+    ctx.strokeStyle='#CFD8DC';ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(0,-220);ctx.lineTo(0,-310);ctx.stroke();
+    // Spire taper
+    ctx.strokeStyle='#90A4AE';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(0,-310);ctx.lineTo(0,-360);ctx.stroke();
+    ctx.strokeStyle='#CFD8DC';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(0,-360);ctx.lineTo(0,-395);ctx.stroke();
+
+    // Observation deck
+    ctx.fillStyle='#546E7A';ctx.fillRect(-14,-228,28,10);
+    ctx.strokeStyle='#78909C';ctx.lineWidth=1;ctx.strokeRect(-14,-228,28,10);
+    ctx.fillStyle='rgba(100,200,255,0.4)';
+    for(let i=0;i<3;i++)ctx.fillRect(-11+i*8,-226,5,6);
+
+    // Top beacon (pulsing red)
+    const bpulse=0.5+0.5*Math.sin(t*4);
+    ctx.shadowColor='#FF1744';ctx.shadowBlur=bpulse*20;
+    ctx.fillStyle=`rgba(255,50,50,${0.7+bpulse*0.3})`;
+    ctx.beginPath();ctx.arc(0,-396,4,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+
+    // Window glow at night
+    if(timeOfDay==='night'){
+      ctx.fillStyle='rgba(255,240,180,0.18)';ctx.fillRect(-46,-80,92,82);
+    }
+
+    // Label
+    ctx.fillStyle='#FFD700';ctx.font='bold 11px Arial';ctx.textAlign='center';
+    ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=6;
+    ctx.fillText("🏙️ WORLD'S TALLEST BUILDING",0,32);
+    ctx.fillStyle='#B0BEC5';ctx.font='8px Arial';
+    ctx.fillText('828 m — Burj Khalifa',0,43);
+    ctx.shadowBlur=0;
+    ctx.restore();
+  })();
+
+  // ════════════════════════════════════════════════════════
+  // 🏠 COZY HOUSE  (position: 1200, 650)
+  // ════════════════════════════════════════════════════════
+  (()=>{
+    const [hx,hy]=w2s(1200,650);
+    if(hx<-150||hx>canvas.width+150||hy<-120||hy>canvas.height+60)return;
+    ctx.save();ctx.translate(hx,hy);
+
+    // Garden / lawn
+    ctx.fillStyle='#66BB6A';ctx.beginPath();ctx.ellipse(0,8,70,18,0,0,Math.PI*2);ctx.fill();
+    // Path to door
+    ctx.fillStyle='#BCAAA4';
+    ctx.fillRect(-8,0,16,12);ctx.fillRect(-6,8,12,5);
+
+    // House walls
+    ctx.fillStyle='#FFF8E1';ctx.fillRect(-45,-50,90,55);
+    // Wall shading
+    ctx.fillStyle='rgba(0,0,0,0.06)';ctx.fillRect(35,-50,10,55);
+
+    // Roof
+    ctx.fillStyle='#C62828';
+    ctx.beginPath();ctx.moveTo(-52,-50);ctx.lineTo(0,-95);ctx.lineTo(52,-50);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#E53935';
+    ctx.beginPath();ctx.moveTo(-52,-50);ctx.lineTo(0,-95);ctx.lineTo(0,-50);ctx.closePath();ctx.fill();
+    // Roof ridge
+    ctx.strokeStyle='#B71C1C';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-52,-50);ctx.lineTo(0,-95);ctx.lineTo(52,-50);ctx.stroke();
+
+    // Chimney
+    ctx.fillStyle='#8D6E63';ctx.fillRect(20,-98,16,50);
+    ctx.fillStyle='#795548';ctx.fillRect(18,-100,20,6);
+    // Smoke puffs
+    for(let s=0;s<3;s++){
+      const sy2=-105-s*14+Math.sin(t*1.5+s)*4;
+      const sa=0.5-s*0.14;
+      ctx.fillStyle=`rgba(180,180,180,${sa})`;
+      ctx.beginPath();ctx.arc(28+Math.sin(t+s)*4,sy2,6+s*2,0,Math.PI*2);ctx.fill();
+    }
+
+    // Door
+    ctx.fillStyle='#5D4037';ctx.fillRect(-10,-5,20,30);
+    ctx.fillStyle='rgba(0,0,0,0.2)';ctx.fillRect(4,-2,4,22);
+    ctx.fillStyle='#FFD700';ctx.beginPath();ctx.arc(-5,10,2.5,0,Math.PI*2);ctx.fill();
+    // Door arch
+    ctx.fillStyle='#6D4C41';ctx.beginPath();ctx.arc(0,-5,10,Math.PI,0);ctx.fill();
+
+    // Left window
+    ctx.fillStyle='#E3F2FD';ctx.fillRect(-38,-38,22,20);
+    ctx.fillStyle='#90CAF9';ctx.fillRect(-38,-38,22,20);
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=2;ctx.strokeRect(-38,-38,22,20);
+    ctx.beginPath();ctx.moveTo(-27,-38);ctx.lineTo(-27,-18);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-38,-28);ctx.lineTo(-16,-28);ctx.stroke();
+    // Curtains
+    ctx.fillStyle='rgba(255,200,100,0.5)';ctx.fillRect(-38,-38,8,20);ctx.fillRect(-24,-38,6,20);
+
+    // Right window
+    ctx.fillStyle='#90CAF9';ctx.fillRect(16,-38,22,20);
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=2;ctx.strokeRect(16,-38,22,20);
+    ctx.beginPath();ctx.moveTo(27,-38);ctx.lineTo(27,-18);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(16,-28);ctx.lineTo(38,-28);ctx.stroke();
+    ctx.fillStyle='rgba(255,200,100,0.5)';ctx.fillRect(16,-38,8,20);ctx.fillRect(30,-38,6,20);
+
+    // Night window glow
+    if(timeOfDay==='night'){
+      ctx.fillStyle='rgba(255,230,100,0.35)';
+      ctx.fillRect(-38,-38,22,20);ctx.fillRect(16,-38,22,20);
+    }
+
+    // Flower bushes
+    ctx.fillStyle='#2E7D32';
+    ctx.beginPath();ctx.arc(-50,-18,10,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(-40,-22,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#E91E63';ctx.beginPath();ctx.arc(-48,-20,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#FF5722';ctx.beginPath();ctx.arc(-40,-26,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#2E7D32';
+    ctx.beginPath();ctx.arc(50,-18,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#FFEB3B';ctx.beginPath();ctx.arc(50,-22,4,0,Math.PI*2);ctx.fill();
+
+    ctx.fillStyle='#795548';ctx.font='bold 9px Arial';ctx.textAlign='center';
+    ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=4;
+    ctx.fillText('🏠 COZY HOUSE',0,20);ctx.shadowBlur=0;
+    ctx.restore();
+  })();
+
+  // ════════════════════════════════════════════════════════
+  // 🍳 KITCHEN WITH OVEN  (position: 900, 650)
+  // ════════════════════════════════════════════════════════
+  (()=>{
+    const [kx,ky]=w2s(900,660);
+    if(kx<-150||kx>canvas.width+150||ky<-120||ky>canvas.height+60)return;
+    ctx.save();ctx.translate(kx,ky);
+
+    // Building foundation
+    ctx.fillStyle='#78909C';ctx.fillRect(-55,0,110,10);
+    // Walls
+    ctx.fillStyle='#FFECB3';ctx.fillRect(-50,-55,100,58);
+    // Roof
+    ctx.fillStyle='#FF8F00';
+    ctx.beginPath();ctx.moveTo(-56,-55);ctx.lineTo(0,-90);ctx.lineTo(56,-55);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#FFA000';
+    ctx.beginPath();ctx.moveTo(-56,-55);ctx.lineTo(0,-90);ctx.lineTo(0,-55);ctx.closePath();ctx.fill();
+
+    // Kitchen window (large — you can see inside)
+    ctx.fillStyle='rgba(255,230,150,0.85)';ctx.fillRect(-36,-50,72,38);
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=2.5;ctx.strokeRect(-36,-50,72,38);
+    ctx.beginPath();ctx.moveTo(0,-50);ctx.lineTo(0,-12);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-36,-31);ctx.lineTo(36,-31);ctx.stroke();
+
+    // Inside kitchen scene
+    // Counter
+    ctx.fillStyle='#8D6E63';ctx.fillRect(-33,-20,66,10);
+    ctx.fillStyle='#A1887F';ctx.fillRect(-33,-22,66,4);
+    // Bowls / food on counter
+    ctx.fillStyle='#EF5350';ctx.beginPath();ctx.arc(-20,-22,5,Math.PI,0);ctx.fill();
+    ctx.fillStyle='#FFE082';ctx.beginPath();ctx.arc(5,-22,4,Math.PI,0);ctx.fill();
+
+    // OVEN (left side of window)
+    ctx.fillStyle='#616161';ctx.fillRect(-32,-48,22,28);
+    // Oven door
+    ctx.fillStyle='#424242';ctx.fillRect(-30,-46,18,16);
+    ctx.fillStyle='#37474F';ctx.fillRect(-30,-46,18,16);
+    // Oven window glow
+    const ovenGlow=0.6+0.4*Math.sin(t*2);
+    ctx.fillStyle=`rgba(255,${100+Math.floor(ovenGlow*80)},0,${ovenGlow})`;
+    ctx.fillRect(-28,-44,14,12);
+    // Oven burners on top
+    for(let b=0;b<2;b++){
+      ctx.fillStyle='#212121';ctx.beginPath();ctx.arc(-26+b*12,-49,4,0,Math.PI*2);ctx.fill();
+      const burnerOn=0.4+0.6*Math.sin(t*3+b);
+      ctx.fillStyle=`rgba(255,80,0,${burnerOn})`;
+      ctx.beginPath();ctx.arc(-26+b*12,-49,3,0,Math.PI*2);ctx.fill();
+    }
+    // Steam from oven
+    for(let s=0;s<2;s++){
+      const sty=-52-s*10+Math.sin(t*2+s)*3;
+      ctx.fillStyle=`rgba(200,200,200,${0.5-s*0.2})`;
+      ctx.beginPath();ctx.arc(-22+s*6+Math.sin(t+s)*3,sty,4,0,Math.PI*2);ctx.fill();
+    }
+
+    // FRIDGE (right side)
+    ctx.fillStyle='#EEEEEE';ctx.fillRect(12,-50,20,32);
+    ctx.fillStyle='#E0E0E0';ctx.fillRect(12,-50,20,14);
+    ctx.strokeStyle='#BDBDBD';ctx.lineWidth=1;ctx.strokeRect(12,-50,20,32);
+    ctx.strokeRect(12,-50,20,14);
+    ctx.fillStyle='#9E9E9E';ctx.beginPath();ctx.arc(14,-43,1.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(14,-30,1.5,0,Math.PI*2);ctx.fill();
+
+    // Door
+    ctx.fillStyle='#795548';ctx.fillRect(-8,0,16,26);
+    ctx.fillStyle='#6D4C41';ctx.beginPath();ctx.arc(0,0,8,Math.PI,0);ctx.fill();
+    ctx.fillStyle='#FFD700';ctx.beginPath();ctx.arc(-3,10,2,0,Math.PI*2);ctx.fill();
+
+    // Sign
+    ctx.fillStyle='#E65100';ctx.font='bold 9px Arial';ctx.textAlign='center';
+    ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=4;
+    ctx.fillText('🍳 KITCHEN & OVEN',0,20);ctx.shadowBlur=0;
+    ctx.restore();
+  })();
+
+  // ════════════════════════════════════════════════════════
+  // 🌳 TREE HOUSE  (position: 450, 1300)
+  // ════════════════════════════════════════════════════════
+  (()=>{
+    const [tx2,ty2]=w2s(450,1300);
+    if(tx2<-150||tx2>canvas.width+150||ty2<-200||ty2>canvas.height+60)return;
+    ctx.save();ctx.translate(tx2,ty2);
+
+    // Tree trunk — thick & tall
+    const tg=ctx.createLinearGradient(-20,0,20,0);
+    tg.addColorStop(0,'#4E342E');tg.addColorStop(0.4,'#6D4C41');tg.addColorStop(1,'#3E2723');
+    ctx.fillStyle=tg;ctx.fillRect(-18,-160,36,165);
+    // Roots
+    ctx.fillStyle='#4E342E';
+    ctx.beginPath();ctx.moveTo(-18,-10);ctx.lineTo(-38,6);ctx.lineTo(-30,-5);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(18,-10);ctx.lineTo(38,6);ctx.lineTo(30,-5);ctx.closePath();ctx.fill();
+    // Bark texture lines
+    ctx.strokeStyle='rgba(0,0,0,0.18)';ctx.lineWidth=1.5;
+    for(let b=0;b<5;b++){ctx.beginPath();ctx.moveTo(-15,-30-b*26);ctx.bezierCurveTo(-5,-24-b*26,8,-28-b*26,14,-22-b*26);ctx.stroke();}
+
+    // Big leafy canopy — 3 layers
+    ctx.fillStyle='#1B5E20';ctx.beginPath();ctx.arc(0,-190,65,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#2E7D32';ctx.beginPath();ctx.arc(-15,-205,52,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#388E3C';ctx.beginPath();ctx.arc(18,-210,45,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#43A047';ctx.beginPath();ctx.arc(0,-220,38,0,Math.PI*2);ctx.fill();
+    // Fruit / apples in tree
+    ctx.fillStyle='#E53935';
+    for(let a=0;a<6;a++){
+      const ax=Math.cos(a*1.05)*40-5, ay=-190+Math.sin(a*1.05)*35-10;
+      ctx.beginPath();ctx.arc(ax,ay,5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#C62828';ctx.beginPath();ctx.arc(ax+1,ay+1,3,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#E53935';
+    }
+
+    // ── TREE HOUSE PLATFORM ──
+    // Platform planks
+    ctx.fillStyle='#8D6E63';ctx.fillRect(-42,-160,84,12);
+    ctx.fillStyle='#795548';
+    for(let p=0;p<6;p++)ctx.fillRect(-42+p*14,-160,12,12);
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=1;
+    for(let p=0;p<6;p++)ctx.strokeRect(-42+p*14,-160,12,12);
+    // Platform railings
+    ctx.strokeStyle='#6D4C41';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-42,-155);ctx.lineTo(-42,-175);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(42,-155);ctx.lineTo(42,-175);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-42,-165);ctx.lineTo(42,-165);ctx.stroke();
+    for(let r=-36;r<=36;r+=12){ctx.beginPath();ctx.moveTo(r,-155);ctx.lineTo(r,-165);ctx.stroke();}
+
+    // Tree house cabin
+    ctx.fillStyle='#A1887F';ctx.fillRect(-30,-212,60,54);
+    const thg=ctx.createLinearGradient(-30,-212,30,-212);
+    thg.addColorStop(0,'#795548');thg.addColorStop(0.5,'#A1887F');thg.addColorStop(1,'#795548');
+    ctx.fillStyle=thg;ctx.fillRect(-30,-212,60,54);
+    // Cabin roof
+    ctx.fillStyle='#4E342E';
+    ctx.beginPath();ctx.moveTo(-36,-212);ctx.lineTo(0,-240);ctx.lineTo(36,-212);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#6D4C41';
+    ctx.beginPath();ctx.moveTo(-36,-212);ctx.lineTo(0,-240);ctx.lineTo(0,-212);ctx.closePath();ctx.fill();
+    // Cabin door
+    ctx.fillStyle='#5D4037';ctx.fillRect(-8,-180,16,32);
+    ctx.fillStyle='#4E342E';ctx.beginPath();ctx.arc(0,-180,8,Math.PI,0);ctx.fill();
+    ctx.fillStyle='#FFD700';ctx.beginPath();ctx.arc(-4,-168,2,0,Math.PI*2);ctx.fill();
+    // Cabin window
+    ctx.fillStyle='#B3E5FC';ctx.fillRect(14,-205,14,14);
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=1.5;ctx.strokeRect(14,-205,14,14);
+    ctx.beginPath();ctx.moveTo(21,-205);ctx.lineTo(21,-191);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(14,-198);ctx.lineTo(28,-198);ctx.stroke();
+    if(timeOfDay==='night'){
+      ctx.fillStyle='rgba(255,230,100,0.5)';ctx.fillRect(14,-205,14,14);
+    }
+    // Small flag on roof
+    ctx.strokeStyle='#5D4037';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(0,-240);ctx.lineTo(0,-255);ctx.stroke();
+    ctx.fillStyle='#FF5722';
+    ctx.beginPath();ctx.moveTo(0,-255);ctx.lineTo(14,-250);ctx.lineTo(0,-245);ctx.closePath();ctx.fill();
+
+    // ROPE LADDER
+    // Side ropes
+    ctx.strokeStyle='#8D6E63';ctx.lineWidth=2.5;
+    for(let side=-1;side<=1;side+=2){
+      ctx.beginPath();ctx.moveTo(side*10,-148);
+      ctx.lineTo(side*10+side*4,-80);ctx.stroke();
+    }
+    // Rungs
+    ctx.strokeStyle='#6D4C41';ctx.lineWidth=2;
+    for(let r=0;r<5;r++){
+      const ry=-140+r*15;
+      ctx.beginPath();ctx.moveTo(-10+(-1)*r*0.8,ry);ctx.lineTo(10+(1)*r*0.8,ry);ctx.stroke();
+    }
+
+    // Label
+    ctx.fillStyle='#8D6E63';ctx.font='bold 10px Arial';ctx.textAlign='center';
+    ctx.shadowColor='rgba(0,0,0,0.6)';ctx.shadowBlur=5;
+    ctx.fillText('🌳 TREE HOUSE',0,20);ctx.shadowBlur=0;
+    ctx.restore();
+  })();
+}
+
 // ── World minimap ──────────────────────────────────────────────────────────
 function drawMinimap(){
   const mw=140,mh=100,mx=canvas.width-150,my=canvas.height-115;
@@ -3330,6 +3687,7 @@ function loop(){
 
     drawTerrain();
     drawDecorations();
+    drawWorldStructures();
     drawTrack();
     drawBuildZones();
     drawTraps();
