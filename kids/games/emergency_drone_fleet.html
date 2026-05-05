@@ -1,0 +1,303 @@
+
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+#gw { display:flex; flex-direction:column; align-items:center; gap:12px; padding:14px 0; font-family:var(--font-sans); }
+#sky { width:100%; max-width:700px; height:400px; background:linear-gradient(180deg,#b5d4f4 0%,#e6f1fb 100%); border-radius:var(--border-radius-lg); border:0.5px solid var(--color-border-tertiary); position:relative; overflow:hidden; }
+#ground { position:absolute; bottom:0; left:0; right:0; height:75px; background:#639922; border-top:3px solid #3B6D11; }
+#road { position:absolute; bottom:0; left:0; right:0; height:28px; background:#3a3a38; }
+#rline { position:absolute; bottom:11px; left:0; right:0; height:3px; background:repeating-linear-gradient(90deg,#FAC775 0 28px,transparent 28px 56px); }
+.cloud{position:absolute;background:white;border-radius:50px;opacity:0.82;}
+.bld{position:absolute;bottom:75px;}
+
+/* Drone containers */
+.drone { position:absolute; width:90px; height:60px; }
+
+/* Rotor animations */
+@keyframes sr{0%{transform:scaleX(1)}50%{transform:scaleX(-1)}100%{transform:scaleX(1)}}
+.rotor-arm { position:absolute; width:20px; height:4px; background:#555; border-radius:2px; }
+.rotor-blade { position:absolute; width:26px; height:5px; background:#333; border-radius:3px; transform-origin:center; animation:sr .09s linear infinite; }
+
+/* Beacon flashes */
+@keyframes fR{0%,49%{opacity:1}50%,100%{opacity:0.08}}
+@keyframes fB{0%,49%{opacity:0.08}50%,100%{opacity:1}}
+@keyframes fA{0%,33%{opacity:1}34%,66%{opacity:0.08}67%,100%{opacity:1}}
+@keyframes fR2{0%,49%{opacity:1}50%,100%{opacity:0.08}}
+.br{animation:fR .5s step-end infinite}.bb{animation:fB .5s step-end infinite}.ba{animation:fA .6s step-end infinite}.br2{animation:fR2 .5s step-end infinite .25s}
+
+/* Fire / crash */
+.flame{position:absolute;border-radius:50% 50% 30% 30%;animation:flk .25s ease-in-out infinite alternate;transform-origin:bottom center;}
+@keyframes flk{from{transform:scaleX(1) scaleY(1) rotate(-5deg);}to{transform:scaleX(0.8) scaleY(1.15) rotate(5deg);opacity:0.85;}}
+.smoke{position:absolute;border-radius:50%;background:rgba(80,80,80,0.4);animation:rs 1s ease-out infinite;}
+@keyframes rs{0%{opacity:0.7;transform:translateY(0) scale(1);}100%{opacity:0;transform:translateY(-55px) scale(2.5);}}
+
+/* Selection arrow */
+.sel-arrow{position:absolute;font-size:20px;text-align:center;animation:blnk .5s step-end infinite;pointer-events:none;z-index:10;color:#FAC775;}
+@keyframes blnk{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+#crash-msg{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);background:rgba(163,45,45,0.93);color:#FCEBEB;border-radius:var(--border-radius-lg);padding:10px 20px;font-size:15px;font-weight:500;display:none;text-align:center;z-index:20;line-height:1.6;}
+
+/* Controls */
+#ctrl{width:100%;max-width:700px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+#sel-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+.sbtn{min-width:150px;padding:10px 8px;border-radius:var(--border-radius-lg);border:2px solid var(--color-border-secondary);background:var(--color-background-primary);font-size:13px;cursor:pointer;color:var(--color-text-secondary);text-align:center;line-height:1.5;}
+.sbtn span{font-size:10px;display:block;color:var(--color-text-tertiary);margin-top:2px;}
+.sbtn.active{border-color:#FAC775;background:rgba(250,199,117,0.18);color:var(--color-text-primary);font-weight:500;}
+#dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:4px;}
+.dp{width:44px;height:44px;background:var(--color-background-primary);border:0.5px solid var(--color-border-primary);border-radius:var(--border-radius-md);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;user-select:none;color:var(--color-text-primary);}
+.dp:active,.dp.pressed{background:var(--color-background-info);}
+#stbar{font-size:12px;color:var(--color-text-secondary);text-align:center;}
+#rstbtn{padding:7px 18px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-danger);background:var(--color-background-danger);color:var(--color-text-danger);font-size:13px;cursor:pointer;}
+</style>
+
+<div id="gw">
+  <h2 class="sr-only">Emergency drone fleet game. Fly the police drone, fire truck drone, and ambulance drone.</h2>
+  <div id="sky">
+    <div class="cloud" style="width:82px;height:26px;top:26px;left:38px;"></div>
+    <div class="cloud" style="width:54px;height:18px;top:40px;left:66px;"></div>
+    <div class="cloud" style="width:70px;height:22px;top:52px;left:450px;"></div>
+    <div class="cloud" style="width:76px;height:20px;top:95px;left:240px;"></div>
+
+    <!-- FIRE STATION -->
+    <div class="bld" style="left:16px;">
+      <svg width="130" height="90" viewBox="0 0 130 90"><rect x="0" y="20" width="130" height="70" fill="#c42020"/><polygon points="0,20 65,0 130,20" fill="#A32D2D"/><rect x="10" y="45" width="50" height="45" rx="2" fill="#3a3a38"/><rect x="10" y="45" width="50" height="8" fill="#555"/><rect x="10" y="53" width="50" height="8" fill="#555"/><rect x="10" y="61" width="50" height="8" fill="#555"/><rect x="72" y="30" width="22" height="18" rx="2" fill="#b5d4f4" stroke="#A32D2D" stroke-width="1"/><line x1="83" y1="30" x2="83" y2="48" stroke="#A32D2D" stroke-width="1"/><line x1="72" y1="39" x2="94" y2="39" stroke="#A32D2D" stroke-width="1"/><rect x="70" y="52" width="50" height="14" rx="2" fill="#FAC775"/><text x="95" y="63" text-anchor="middle" font-size="8" fill="#633806" font-family="sans-serif">FIRE DEPT</text><line x1="110" y1="0" x2="110" y2="20" stroke="#888" stroke-width="2"/><rect x="110" y="0" width="16" height="10" fill="#E24B4A"/></svg>
+    </div>
+
+    <!-- HOSPITAL -->
+    <div class="bld" style="left:50%;transform:translateX(-50%);">
+      <svg width="120" height="90" viewBox="0 0 120 90"><rect x="0" y="10" width="120" height="80" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/><rect x="0" y="10" width="120" height="10" fill="#ddd"/><rect x="8" y="24" width="16" height="14" rx="1" fill="#b5d4f4" stroke="#bbb" stroke-width="0.5"/><rect x="30" y="24" width="16" height="14" rx="1" fill="#b5d4f4" stroke="#bbb" stroke-width="0.5"/><rect x="74" y="24" width="16" height="14" rx="1" fill="#b5d4f4" stroke="#bbb" stroke-width="0.5"/><rect x="96" y="24" width="16" height="14" rx="1" fill="#b5d4f4" stroke="#bbb" stroke-width="0.5"/><rect x="50" y="18" width="20" height="58" rx="2" fill="white" stroke="#ccc" stroke-width="0.5"/><rect x="44" y="30" width="32" height="14" rx="1" fill="#E24B4A"/><rect x="50" y="24" width="20" height="26" rx="1" fill="#E24B4A"/><rect x="45" y="66" width="30" height="24" rx="2" fill="#3a3a38"/><rect x="55" y="66" width="10" height="24" fill="#444"/><rect x="0" y="44" width="44" height="12" fill="#185FA5"/><text x="22" y="53" text-anchor="middle" font-size="7" fill="white" font-family="sans-serif">HOSPITAL</text><rect x="76" y="44" width="44" height="12" fill="#185FA5"/><text x="98" y="53" text-anchor="middle" font-size="7" fill="white" font-family="sans-serif">HOSPITAL</text></svg>
+    </div>
+
+    <!-- POLICE HQ -->
+    <div class="bld" style="right:16px;">
+      <svg width="130" height="90" viewBox="0 0 130 90"><rect x="0" y="15" width="130" height="75" fill="#185FA5"/><rect x="0" y="10" width="130" height="10" fill="#0C447C"/><rect x="15" y="15" width="8" height="75" fill="#0C447C" opacity="0.4"/><rect x="35" y="15" width="8" height="75" fill="#0C447C" opacity="0.4"/><rect x="87" y="15" width="8" height="75" fill="#0C447C" opacity="0.4"/><rect x="107" y="15" width="8" height="75" fill="#0C447C" opacity="0.4"/><rect x="20" y="22" width="18" height="14" rx="1" fill="#b5d4f4" stroke="#0C447C" stroke-width="0.5"/><rect x="56" y="22" width="18" height="14" rx="1" fill="#b5d4f4" stroke="#0C447C" stroke-width="0.5"/><rect x="92" y="22" width="18" height="14" rx="1" fill="#b5d4f4" stroke="#0C447C" stroke-width="0.5"/><rect x="20" y="42" width="90" height="14" rx="2" fill="#0C447C"/><text x="65" y="53" text-anchor="middle" font-size="7.5" fill="#B5D4F4" font-family="sans-serif">POLICE DEPT</text><path d="M65 58 L75 62 L75 74 L65 80 L55 74 L55 62 Z" fill="#FAC775"/><text x="65" y="73" text-anchor="middle" font-size="7" fill="#633806" font-family="sans-serif">★</text><rect x="50" y="68" width="30" height="22" rx="2" fill="#0C447C"/><line x1="120" y1="0" x2="120" y2="15" stroke="#888" stroke-width="2"/><rect x="120" y="0" width="14" height="9" fill="#185FA5"/></svg>
+    </div>
+
+    <div id="ground"><div id="road"><div id="rline"></div></div></div>
+    <div id="crash-msg"></div>
+  </div>
+
+  <div id="ctrl">
+    <div id="sel-row">
+      <button class="sbtn active" id="sb-fd" onclick="pick('fd')">🚒 Fire Drone<span>Key 1 · ↑↓←→ to fly</span></button>
+      <button class="sbtn" id="sb-ad" onclick="pick('ad')">🚑 Ambulance Drone<span>Key 2 · ↑↓←→ to fly</span></button>
+      <button class="sbtn" id="sb-pd" onclick="pick('pd')">🚔 Police Drone<span>Key 3 · ↑↓←→ to fly</span></button>
+    </div>
+    <div style="display:flex;gap:14px;align-items:center;">
+      <div id="dpad">
+        <div></div><div class="dp" id="dp-u">&#9650;</div><div></div>
+        <div class="dp" id="dp-l">&#9664;</div><div></div><div class="dp" id="dp-r">&#9654;</div>
+        <div></div><div class="dp" id="dp-d">&#9660;</div><div></div>
+      </div>
+      <button id="rstbtn" onclick="resetAll()">&#8635; Reset</button>
+    </div>
+    <div id="stbar">Select a drone above (or press 1/2/3) · arrow keys to fly</div>
+  </div>
+</div>
+
+<script>
+const skyEl=document.getElementById('sky');
+const crashMsg=document.getElementById('crash-msg');
+const stbar=document.getElementById('stbar');
+
+function W(){return skyEl.clientWidth||700;}
+function H(){return skyEl.clientHeight||400;}
+function gndY(){return H()-75-60;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+const keys={};
+let sel='fd';
+const ACCEL=0.5,FRIC=0.78,GRAV=0.15,CRASH_VY=1.5;
+
+// Each drone: x, y, vx, vy, crashed, el
+const drones={
+  fd:{x:80,  y:80, vx:0,vy:0, crashed:false, el:null, label:'Fire Drone'},
+  ad:{x:310, y:120,vx:0,vy:0, crashed:false, el:null, label:'Ambulance Drone'},
+  pd:{x:540, y:70, vx:0,vy:0, crashed:false, el:null, label:'Police Drone'},
+};
+
+function makeDroneSVG(type){
+  // All drones: arms extend from corners, rotors on each arm tip, body in centre
+  const bodies={
+    fd:`<!-- Fire Truck Drone body -->
+      <rect x="20" y="22" width="50" height="22" rx="4" fill="#E24B4A" stroke="#A32D2D" stroke-width="1"/>
+      <rect x="20" y="22" width="16" height="22" rx="3" fill="#c42020"/>
+      <rect x="42" y="25" width="10" height="8" rx="1" fill="#b5d4f4"/>
+      <rect x="56" y="25" width="10" height="8" rx="1" fill="#b5d4f4"/>
+      <rect x="24" y="16" width="42" height="7" rx="2" fill="#A32D2D"/>
+      <rect x="26" y="13" width="38" height="5" rx="2" fill="#333"/>
+      <rect x="28" y="14" width="10" height="3" rx="1" fill="#E24B4A" class="br"/>
+      <rect x="40" y="14" width="10" height="3" rx="1" fill="#E24B4A" class="br2"/>
+      <rect x="52" y="14" width="10" height="3" rx="1" fill="#EF9F27" class="ba"/>`,
+    ad:`<!-- Ambulance Drone body -->
+      <rect x="18" y="22" width="54" height="22" rx="4" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+      <rect x="18" y="22" width="16" height="22" rx="3" fill="#ddd"/>
+      <rect x="40" y="25" width="12" height="9" rx="1" fill="#b5d4f4"/>
+      <rect x="58" y="25" width="10" height="9" rx="1" fill="#b5d4f4"/>
+      <rect x="38" y="22" width="3" height="10" fill="#E24B4A"/>
+      <rect x="32" y="26" width="15" height="3" fill="#E24B4A"/>
+      <rect x="24" y="14" width="42" height="9" rx="3" fill="#333"/>
+      <rect x="26" y="15" width="12" height="7" rx="2" fill="#E24B4A" class="br"/>
+      <rect x="40" y="15" width="12" height="7" rx="2" fill="#EF9F27" class="ba"/>
+      <rect x="54" y="15" width="12" height="7" rx="2" fill="#E24B4A" class="br2"/>`,
+    pd:`<!-- Police Drone body -->
+      <rect x="18" y="22" width="54" height="22" rx="4" fill="#185FA5" stroke="#0C447C" stroke-width="1"/>
+      <rect x="18" y="22" width="16" height="22" rx="3" fill="#0C447C"/>
+      <rect x="40" y="25" width="12" height="9" rx="1" fill="#b5d4f4"/>
+      <rect x="58" y="25" width="10" height="9" rx="1" fill="#b5d4f4"/>
+      <rect x="28" y="14" width="34" height="9" rx="3" fill="#222"/>
+      <rect x="30" y="15" width="14" height="7" rx="2" fill="#E24B4A" class="br"/>
+      <rect x="48" y="15" width="14" height="7" rx="2" fill="#378ADD" class="bb"/>`
+  };
+
+  return `<svg width="90" height="60" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
+    <!-- Arms -->
+    <line x1="22" y1="24" x2="6"  y2="10" stroke="#666" stroke-width="3"/>
+    <line x1="68" y1="24" x2="84" y2="10" stroke="#666" stroke-width="3"/>
+    <line x1="22" y1="42" x2="6"  y2="54" stroke="#666" stroke-width="3"/>
+    <line x1="68" y1="42" x2="84" y2="54" stroke="#666" stroke-width="3"/>
+    <!-- Rotor hubs -->
+    <circle cx="6"  cy="10" r="4" fill="#444"/>
+    <circle cx="84" cy="10" r="4" fill="#444"/>
+    <circle cx="6"  cy="54" r="4" fill="#444"/>
+    <circle cx="84" cy="54" r="4" fill="#444"/>
+    ${bodies[type]}
+    <!-- Landing legs -->
+    <line x1="30" y1="44" x2="25" y2="56" stroke="#888" stroke-width="2"/>
+    <line x1="60" y1="44" x2="65" y2="56" stroke="#888" stroke-width="2"/>
+    <line x1="20" y1="56" x2="32" y2="56" stroke="#888" stroke-width="2"/>
+    <line x1="58" y1="56" x2="70" y2="56" stroke="#888" stroke-width="2"/>
+  </svg>`;
+}
+
+// Build rotor blade overlays per drone (animated separately in DOM)
+function makeRotorEl(cx, cy){
+  const r=document.createElement('div');
+  r.style.cssText=`position:absolute;left:${cx-13}px;top:${cy-3}px;width:26px;height:5px;background:#222;border-radius:3px;transform-origin:center;animation:sr .09s linear infinite;`;
+  return r;
+}
+
+function buildDrone(k){
+  const wrap=document.createElement('div');
+  wrap.className='drone'; wrap.id='dr-'+k;
+  wrap.innerHTML=makeDroneSVG(k);
+  wrap.style.left=drones[k].x+'px';
+  wrap.style.top=drones[k].y+'px';
+  wrap.style.cursor='pointer';
+  wrap.addEventListener('click',()=>pick(k));
+
+  // Add spinning rotor overlays
+  [[6,10],[84,10],[6,54],[84,54]].forEach(([cx,cy],i)=>{
+    const b=document.createElement('div');
+    b.className='rotor-blade';
+    b.style.cssText=`position:absolute;left:${cx-13}px;top:${cy-2}px;width:26px;height:5px;background:#222;border-radius:3px;transform-origin:center;animation:sr .09s linear infinite ${i*0.02}s;`;
+    b.dataset.rk=k;
+    wrap.appendChild(b);
+  });
+
+  skyEl.appendChild(wrap);
+  drones[k].el=wrap;
+}
+
+['fd','ad','pd'].forEach(buildDrone);
+
+// Selection arrow
+const arr=document.createElement('div');
+arr.className='sel-arrow'; arr.textContent='▼'; arr.style.display='none';
+skyEl.appendChild(arr);
+
+function updateArrow(){
+  const d=drones[sel];
+  arr.style.left=(d.x+35)+'px';
+  arr.style.top=Math.max(2,d.y-26)+'px';
+  arr.style.display='block';
+}
+
+function pick(id){
+  sel=id;
+  document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sb-'+id)?.classList.add('active');
+  stbar.textContent='Flying: '+drones[id].label+' — ↑↓←→ to fly · land gently to be safe · dive fast to crash!';
+}
+
+function spawnFire(cx,cy){
+  const g=document.createElement('div');
+  g.style.cssText=`position:absolute;left:${cx-30}px;top:${cy+20}px;width:60px;height:60px;pointer-events:none;z-index:5;`;
+  [{l:20,b:0,w:16,h:34,c:'#E24B4A',d:0},{l:10,b:0,w:12,h:24,c:'#EF9F27',d:.07},{l:34,b:0,w:12,h:24,c:'#EF9F27',d:.13},{l:15,b:8,w:22,h:42,c:'#FAC775',d:.05}].forEach(f=>{
+    const e=document.createElement('div'); e.className='flame';
+    e.style.cssText=`left:${f.l}px;bottom:${f.b}px;width:${f.w}px;height:${f.h}px;background:${f.c};animation-delay:${f.d}s;`;
+    g.appendChild(e);
+  });
+  for(let i=0;i<3;i++){const s=document.createElement('div');s.className='smoke';s.style.cssText=`left:${12+i*10}px;bottom:${40+i*5}px;width:${10+i*6}px;height:${10+i*6}px;animation-delay:${i*.3}s;`;g.appendChild(s);}
+  skyEl.appendChild(g);
+}
+
+function loop(){
+  const w=W(), gY=gndY();
+  Object.keys(drones).forEach(k=>{
+    const d=drones[k];
+    if(d.crashed) return;
+    if(sel===k){
+      if(keys['ArrowUp'])   d.vy-=ACCEL;
+      if(keys['ArrowDown']) d.vy+=ACCEL*.5;
+      if(keys['ArrowLeft']) d.vx-=ACCEL;
+      if(keys['ArrowRight'])d.vx+=ACCEL;
+    }
+    d.vy+=GRAV; d.vx*=FRIC; d.vy*=FRIC;
+    d.x+=d.vx; d.y+=d.vy;
+    if(d.y>=gY){
+      if(d.vy>CRASH_VY){
+        d.x=clamp(d.x,0,w-90); d.y=gY;
+        d.el.style.left=Math.round(d.x)+'px';
+        d.el.style.top=Math.round(d.y)+'px';
+        d.el.style.transform='rotate(35deg)';
+        d.el.querySelectorAll('.rotor-blade').forEach(r=>r.style.animation='none');
+        spawnFire(d.x+45, gY-20);
+        d.crashed=true;
+        crashMsg.innerHTML='&#128165; '+d.label+' CRASHED!';
+        crashMsg.style.display='block';
+        setTimeout(()=>crashMsg.style.display='none',2500);
+        // switch to next active
+        const alive=Object.keys(drones).filter(k2=>!drones[k2].crashed&&k2!==k);
+        if(alive.length) pick(alive[0]);
+        return;
+      }
+      d.vy=0; d.vx*=.65; d.y=gY;
+    }
+    if(d.y<5){d.vy=0;d.y=5;}
+    d.x=clamp(d.x,0,w-90);
+    d.el.style.left=Math.round(d.x)+'px';
+    d.el.style.top=Math.round(d.y)+'px';
+  });
+  updateArrow();
+  requestAnimationFrame(loop);
+}
+
+pick('fd');
+requestAnimationFrame(loop);
+
+function resetAll(){
+  document.querySelectorAll('[id^="dr-"]').forEach(e=>e.remove());
+  document.querySelectorAll('.flame,.smoke').forEach(e=>e.remove());
+  Object.assign(drones.fd,{x:80, y:80, vx:0,vy:0,crashed:false,el:null});
+  Object.assign(drones.ad,{x:310,y:120,vx:0,vy:0,crashed:false,el:null});
+  Object.assign(drones.pd,{x:540,y:70, vx:0,vy:0,crashed:false,el:null});
+  ['fd','ad','pd'].forEach(buildDrone);
+  pick('fd');
+}
+
+document.addEventListener('keydown',e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();keys[e.key]=true;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[e.key])?.classList.add('pressed');}
+  if(e.key==='1')pick('fd');
+  if(e.key==='2')pick('ad');
+  if(e.key==='3')pick('pd');
+});
+document.addEventListener('keyup',e=>{keys[e.key]=false;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[e.key])?.classList.remove('pressed');});
+function hold(k){keys[k]=true;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[k])?.classList.add('pressed');}
+function rel(k){keys[k]=false;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[k])?.classList.remove('pressed');}
+[['dp-u','ArrowUp'],['dp-d','ArrowDown'],['dp-l','ArrowLeft'],['dp-r','ArrowRight']].forEach(([id,k])=>{
+  const b=document.getElementById(id);
+  b.addEventListener('mousedown',e=>{e.preventDefault();hold(k);});
+  b.addEventListener('touchstart',e=>{e.preventDefault();hold(k);});
+  b.addEventListener('mouseup',()=>rel(k));b.addEventListener('mouseleave',()=>rel(k));b.addEventListener('touchend',()=>rel(k));
+});
+</script>

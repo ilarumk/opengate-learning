@@ -1,0 +1,478 @@
+
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+#gw { display:flex; flex-direction:column; align-items:center; gap:10px; padding:12px 0; font-family:var(--font-sans); }
+#sky { width:100%; max-width:720px; height:410px; background:linear-gradient(180deg,#1a1a2e 0%,#16213e 40%,#0f3460 100%); border-radius:var(--border-radius-lg); border:0.5px solid var(--color-border-tertiary); position:relative; overflow:hidden; }
+.star{position:absolute;border-radius:50%;background:white;}
+#ground { position:absolute; bottom:0; left:0; right:0; height:75px; background:#27500A; border-top:3px solid #173404; }
+#road { position:absolute; bottom:0; left:0; right:0; height:32px; background:#2C2C2A; }
+#rline { position:absolute; bottom:13px; left:0; right:0; height:3px; background:repeating-linear-gradient(90deg,#FAC775 0 28px,transparent 28px 56px); }
+.bld{position:absolute;bottom:75px;}
+.drone{position:absolute;width:90px;height:60px;cursor:pointer;}
+.gcar{position:absolute;bottom:4px;cursor:pointer;}
+.rotor-blade{position:absolute;width:26px;height:5px;border-radius:3px;transform-origin:center;animation:sr .09s linear infinite;}
+@keyframes sr{0%{transform:scaleX(1)}50%{transform:scaleX(-1)}100%{transform:scaleX(1)}}
+@keyframes fR{0%,49%{opacity:1}50%,100%{opacity:0.08}}
+@keyframes fB{0%,49%{opacity:0.08}50%,100%{opacity:1}}
+@keyframes fA{0%,33%{opacity:1}34%,66%{opacity:0.08}67%,100%{opacity:1}}
+@keyframes fR2{0%,49%{opacity:1}50%,100%{opacity:0.08}}
+.br{animation:fR .5s step-end infinite}.bb{animation:fB .5s step-end infinite}.ba{animation:fA .6s step-end infinite}.br2{animation:fR2 .5s step-end infinite .25s}
+.laser{position:absolute;height:4px;border-radius:2px;background:#f00;pointer-events:none;z-index:18;box-shadow:0 0 8px #f00,0 0 16px #f66;}
+@keyframes laserFade{0%{opacity:1}100%{opacity:0}}
+.fireball{position:absolute;border-radius:50%;pointer-events:none;z-index:17;}
+.bullet{position:absolute;width:5px;height:11px;border-radius:3px;pointer-events:none;z-index:16;}
+.hbullet{position:absolute;width:11px;height:5px;border-radius:3px;pointer-events:none;z-index:16;}
+.hp-wrap{position:absolute;width:56px;height:5px;background:rgba(0,0,0,0.5);border-radius:3px;top:-10px;left:0;}
+.hp-bar{height:100%;border-radius:3px;transition:width .15s,background .15s;}
+@keyframes hitFlash{0%,100%{filter:brightness(1)}50%{filter:brightness(3.5)}}
+.hit{animation:hitFlash .15s ease-in-out 2;}
+@keyframes explode{0%{transform:scale(0.3);opacity:1}100%{transform:scale(2.8);opacity:0}}
+.expl{position:absolute;border-radius:50%;pointer-events:none;z-index:20;animation:explode .4s ease-out forwards;}
+.smoke{position:absolute;border-radius:50%;background:rgba(80,80,80,0.4);animation:rs 1s ease-out infinite;}
+@keyframes rs{0%{opacity:0.7;transform:translateY(0) scale(1);}100%{opacity:0;transform:translateY(-50px) scale(2.5);}}
+.flame{position:absolute;border-radius:50% 50% 30% 30%;animation:flk .25s ease-in-out infinite alternate;transform-origin:bottom center;}
+@keyframes flk{from{transform:scaleX(1) rotate(-5deg);}to{transform:scaleX(0.8) scaleY(1.15) rotate(5deg);opacity:0.85;}}
+#joel{position:absolute;bottom:32px;z-index:8;}
+#joel-hw{position:absolute;width:44px;height:5px;background:rgba(0,0,0,0.5);border-radius:3px;top:-10px;left:-4px;}
+#joel-hb{height:100%;width:100%;background:#4CAF50;border-radius:3px;transition:width .2s,background .2s;}
+#joel-sp{position:absolute;background:rgba(20,20,20,0.9);color:#EF9F27;font-size:9px;padding:2px 6px;border-radius:5px;white-space:nowrap;bottom:54px;left:-14px;display:none;}
+.sel-arrow{position:absolute;font-size:17px;animation:blnk .45s step-end infinite;pointer-events:none;z-index:10;}
+@keyframes blnk{0%,49%{opacity:1}50%,100%{opacity:0}}
+#msg-box{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);border-radius:var(--border-radius-lg);padding:10px 22px;font-size:14px;font-weight:500;display:none;text-align:center;z-index:25;line-height:1.7;}
+#ctrl{width:100%;max-width:720px;display:flex;flex-direction:column;align-items:center;gap:8px;}
+.row-label{font-size:10px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.06em;align-self:flex-start;padding-left:4px;}
+#sel-sky,#sel-road{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;width:100%;}
+.sbtn{min-width:120px;padding:7px 5px;border-radius:var(--border-radius-md);border:2px solid var(--color-border-secondary);background:var(--color-background-primary);font-size:11px;cursor:pointer;color:var(--color-text-secondary);text-align:center;line-height:1.4;}
+.sbtn span{font-size:9px;display:block;color:var(--color-text-tertiary);margin-top:1px;}
+.sbtn.active{border-color:#FAC775;background:rgba(250,199,117,0.18);color:var(--color-text-primary);font-weight:500;}
+.sbtn.evil.active{border-color:#E24B4A;background:rgba(226,75,74,0.15);}
+#bottom-row{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+#dpad{display:grid;grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);gap:3px;}
+.dp{width:40px;height:40px;background:var(--color-background-primary);border:0.5px solid var(--color-border-primary);border-radius:var(--border-radius-md);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;user-select:none;color:var(--color-text-primary);}
+.dp:active,.dp.pressed{background:var(--color-background-info);}
+#shoot-btn{width:64px;height:64px;border-radius:50%;border:3px solid #E24B4A;background:rgba(226,75,74,0.12);font-size:11px;font-weight:500;color:var(--color-text-danger);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;line-height:1.3;user-select:none;}
+#shoot-btn:active{background:rgba(226,75,74,0.35);}
+#rstbtn{padding:6px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-danger);background:var(--color-background-danger);color:var(--color-text-danger);font-size:11px;cursor:pointer;}
+#stbar{font-size:10px;color:var(--color-text-secondary);text-align:center;max-width:680px;}
+</style>
+
+<div id="gw">
+  <h2 class="sr-only">Full emergency fleet game — drones in the sky, cars on the road, fight Joel and the bad guy drone.</h2>
+  <div id="sky">
+    <div class="star" style="width:2px;height:2px;top:16px;left:90px;opacity:.8;"></div>
+    <div class="star" style="width:1px;height:1px;top:30px;left:230px;opacity:.6;"></div>
+    <div class="star" style="width:2px;height:2px;top:12px;left:370px;opacity:.9;"></div>
+    <div class="star" style="width:1px;height:1px;top:42px;left:510px;opacity:.7;"></div>
+    <div class="star" style="width:2px;height:2px;top:20px;left:620px;opacity:.8;"></div>
+    <div class="star" style="width:1px;height:1px;top:58px;left:150px;opacity:.5;"></div>
+
+    <!-- Buildings -->
+    <div class="bld" style="left:8px;">
+      <svg width="105" height="78" viewBox="0 0 105 78"><rect x="0" y="16" width="105" height="62" fill="#991414"/><polygon points="0,16 52,0 105,16" fill="#6b0f0f"/><rect x="6" y="36" width="40" height="42" rx="2" fill="#1a1a18"/><rect x="6" y="36" width="40" height="7" fill="#2a2a28"/><rect x="6" y="43" width="40" height="7" fill="#2a2a28"/><rect x="56" y="24" width="16" height="13" rx="1" fill="#378ADD" opacity=".7"/><rect x="60" y="42" width="36" height="10" rx="2" fill="#EF9F27"/><text x="78" y="50" text-anchor="middle" font-size="6.5" fill="#412402" font-family="sans-serif">FIRE DEPT</text></svg>
+    </div>
+    <div class="bld" style="left:50%;transform:translateX(-50%);">
+      <svg width="105" height="78" viewBox="0 0 105 78"><rect x="0" y="7" width="105" height="71" fill="#ccc" stroke="#999" stroke-width="1"/><rect x="0" y="7" width="105" height="9" fill="#aaa"/><rect x="42" y="13" width="21" height="50" rx="2" fill="white"/><rect x="37" y="25" width="31" height="12" rx="1" fill="#E24B4A"/><rect x="42" y="19" width="21" height="24" rx="1" fill="#E24B4A"/><rect x="38" y="59" width="29" height="19" rx="2" fill="#1a1a18"/><rect x="4" y="35" width="32" height="10" fill="#0C447C"/><text x="20" y="43" text-anchor="middle" font-size="6" fill="white" font-family="sans-serif">HOSPITAL</text></svg>
+    </div>
+    <div class="bld" style="right:8px;">
+      <svg width="105" height="78" viewBox="0 0 105 78"><rect x="0" y="11" width="105" height="67" fill="#0C447C"/><rect x="0" y="7" width="105" height="9" fill="#042C53"/><rect x="10" y="11" width="7" height="67" fill="#042C53" opacity=".5"/><rect x="28" y="11" width="7" height="67" fill="#042C53" opacity=".5"/><rect x="70" y="11" width="7" height="67" fill="#042C53" opacity=".5"/><rect x="88" y="11" width="7" height="67" fill="#042C53" opacity=".5"/><rect x="16" y="19" width="15" height="12" rx="1" fill="#378ADD" opacity=".8"/><rect x="45" y="19" width="15" height="12" rx="1" fill="#378ADD" opacity=".8"/><rect x="75" y="19" width="15" height="12" rx="1" fill="#378ADD" opacity=".8"/><rect x="16" y="37" width="73" height="11" rx="2" fill="#042C53"/><text x="52" y="46" text-anchor="middle" font-size="6" fill="#B5D4F4" font-family="sans-serif">POLICE DEPT</text><path d="M52 50 L60 54 L60 64 L52 69 L44 64 L44 54 Z" fill="#EF9F27"/><text x="52" y="64" text-anchor="middle" font-size="5.5" fill="#412402" font-family="sans-serif">★</text></svg>
+    </div>
+
+    <!-- Joel -->
+    <div id="joel">
+      <div id="joel-sp">Heh heh!</div>
+      <div id="joel-hw"><div id="joel-hb"></div></div>
+      <svg width="32" height="50" viewBox="0 0 32 50">
+        <rect x="8" y="17" width="16" height="17" rx="2" fill="#1a1a18"/>
+        <circle cx="16" cy="12" r="8" fill="#FAC775"/>
+        <circle cx="12" cy="11" r="1.8" fill="#111"/><circle cx="20" cy="11" r="1.8" fill="#111"/>
+        <path d="M11 16 Q16 20 21 16" stroke="#A32D2D" stroke-width="1.5" fill="none"/>
+        <rect x="0" y="19" width="8" height="4" rx="2" fill="#1a1a18"/>
+        <rect x="24" y="19" width="8" height="4" rx="2" fill="#1a1a18"/>
+        <rect x="24" y="17" width="10" height="3" rx="1" fill="#333"/><rect x="31" y="16" width="3" height="5" rx="1" fill="#666"/>
+        <rect x="9" y="33" width="6" height="13" rx="2" fill="#111"/><rect x="17" y="33" width="6" height="13" rx="2" fill="#111"/>
+        <rect x="7" y="43" width="8" height="5" rx="2" fill="#222"/><rect x="17" y="43" width="8" height="5" rx="2" fill="#222"/>
+        <text x="16" y="56" text-anchor="middle" font-size="7" fill="#E24B4A" font-family="sans-serif" font-weight="bold">JOEL</text>
+      </svg>
+    </div>
+
+    <div id="ground"><div id="road"><div id="rline"></div></div></div>
+    <div id="msg-box"></div>
+  </div>
+
+  <div id="ctrl">
+    <div class="row-label">&#9992; Sky drones</div>
+    <div id="sel-sky">
+      <button class="sbtn active" id="sb-fd" onclick="pick('fd')">🚒 Fire Drone<span>Key 1 · shoots ↓</span></button>
+      <button class="sbtn" id="sb-ad" onclick="pick('ad')">🚑 Ambulance Drone<span>Key 2 · shoots ↓</span></button>
+      <button class="sbtn" id="sb-pd" onclick="pick('pd')">🚔 Police Drone<span>Key 3 · shoots ↓</span></button>
+      <button class="sbtn evil" id="sb-bd" onclick="pick('bd')">💀 Bad Guy Drone<span>Key 4 · laser+fireball</span></button>
+    </div>
+    <div class="row-label">&#128663; Road vehicles</div>
+    <div id="sel-road">
+      <button class="sbtn" id="sb-ft" onclick="pick('ft')">🚒 Fire Truck<span>Key 5 · shoots →</span></button>
+      <button class="sbtn" id="sb-am" onclick="pick('am')">🚑 Ambulance<span>Key 6 · shoots →</span></button>
+      <button class="sbtn" id="sb-pc" onclick="pick('pc')">🚔 Police Car<span>Key 7 · shoots →</span></button>
+    </div>
+    <div id="bottom-row">
+      <div id="dpad">
+        <div></div><div class="dp" id="dp-u">&#9650;</div><div></div>
+        <div class="dp" id="dp-l">&#9664;</div><div></div><div class="dp" id="dp-r">&#9654;</div>
+        <div></div><div class="dp" id="dp-d">&#9660;</div><div></div>
+      </div>
+      <div id="shoot-btn" onmousedown="shoot()" ontouchstart="shoot()">&#128165;<br>FIRE!<br><span style="font-size:8px;opacity:.6">SPACE</span></div>
+      <button id="rstbtn" onclick="resetAll()">&#8635; Reset</button>
+    </div>
+    <div id="stbar">Good drones/cars: shoot Joel · Bad Guy Drone (4): laser+fireball at good guys · SPACE to fire</div>
+  </div>
+</div>
+
+<script>
+const skyEl=document.getElementById('sky');
+const msgBox=document.getElementById('msg-box');
+const stbar=document.getElementById('stbar');
+const joelEl=document.getElementById('joel');
+const joelHbEl=document.getElementById('joel-hb');
+const joelSpEl=document.getElementById('joel-sp');
+
+function W(){return skyEl.clientWidth||720;}
+function H(){return skyEl.clientHeight||410;}
+function gndY(){return H()-75-60;}
+function roadY(){return H()-75-32;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+const keys={};
+let sel='fd',gameOver=false,frameCount=0,shootCD=0;
+let joelX=360,joelVx=1.4,joelHp=10;
+const ACCEL=0.5,FRIC=0.78,GRAV=0.15,CVY=1.5,VACCEL=0.7,VFRIC=0.75;
+
+// Drones (fly)
+const drones={
+  fd:{x:60,  y:75, vx:0,vy:0,crashed:false,hp:5,maxHp:5,el:null,good:true, type:'drone'},
+  ad:{x:250, y:115,vx:0,vy:0,crashed:false,hp:5,maxHp:5,el:null,good:true, type:'drone'},
+  pd:{x:440, y:65, vx:0,vy:0,crashed:false,hp:5,maxHp:5,el:null,good:true, type:'drone'},
+  bd:{x:320, y:45, vx:0,vy:0,crashed:false,hp:8,maxHp:8,el:null,good:false,type:'drone'},
+};
+// Ground cars
+const cars={
+  ft:{x:40,  vx:0,hp:6,maxHp:6,el:null,good:true, w:114},
+  am:{x:260, vx:0,hp:6,maxHp:6,el:null,good:true, w:96},
+  pc:{x:480, vx:0,hp:6,maxHp:6,el:null,good:true, w:94},
+};
+
+const projectiles=[];
+
+// ---------- SVG builders ----------
+function makeDroneSVG(k){
+  const b={
+    fd:`<rect x="20" y="22" width="50" height="22" rx="4" fill="#E24B4A" stroke="#A32D2D" stroke-width="1"/><rect x="20" y="22" width="16" height="22" rx="3" fill="#c42020"/><rect x="42" y="25" width="10" height="8" rx="1" fill="#b5d4f4"/><rect x="56" y="25" width="10" height="8" rx="1" fill="#b5d4f4"/><rect x="26" y="13" width="38" height="5" rx="2" fill="#333"/><rect x="28" y="14" width="10" height="3" rx="1" fill="#E24B4A" class="br"/><rect x="40" y="14" width="10" height="3" rx="1" fill="#E24B4A" class="br2"/><rect x="52" y="14" width="10" height="3" rx="1" fill="#EF9F27" class="ba"/><rect x="34" y="42" width="22" height="4" rx="2" fill="#555"/><rect x="53" y="41" width="7" height="3" rx="1" fill="#888"/>`,
+    ad:`<rect x="18" y="22" width="54" height="22" rx="4" fill="#eee" stroke="#ccc" stroke-width="1"/><rect x="18" y="22" width="16" height="22" rx="3" fill="#ddd"/><rect x="40" y="25" width="12" height="9" rx="1" fill="#b5d4f4"/><rect x="58" y="25" width="10" height="9" rx="1" fill="#b5d4f4"/><rect x="38" y="22" width="3" height="10" fill="#E24B4A"/><rect x="32" y="26" width="15" height="3" fill="#E24B4A"/><rect x="24" y="14" width="42" height="8" rx="3" fill="#333"/><rect x="26" y="15" width="12" height="6" rx="2" fill="#E24B4A" class="br"/><rect x="40" y="15" width="12" height="6" rx="2" fill="#EF9F27" class="ba"/><rect x="54" y="15" width="12" height="6" rx="2" fill="#E24B4A" class="br2"/><rect x="34" y="42" width="22" height="4" rx="2" fill="#555"/><rect x="53" y="41" width="7" height="3" rx="1" fill="#888"/>`,
+    pd:`<rect x="18" y="22" width="54" height="22" rx="4" fill="#185FA5" stroke="#0C447C" stroke-width="1"/><rect x="18" y="22" width="16" height="22" rx="3" fill="#0C447C"/><rect x="40" y="25" width="12" height="9" rx="1" fill="#b5d4f4"/><rect x="58" y="25" width="10" height="9" rx="1" fill="#b5d4f4"/><rect x="28" y="14" width="34" height="8" rx="3" fill="#222"/><rect x="30" y="15" width="14" height="6" rx="2" fill="#E24B4A" class="br"/><rect x="48" y="15" width="14" height="6" rx="2" fill="#378ADD" class="bb"/><rect x="34" y="42" width="22" height="4" rx="2" fill="#555"/><rect x="53" y="41" width="7" height="3" rx="1" fill="#888"/>`,
+    bd:`<rect x="18" y="20" width="54" height="24" rx="4" fill="#1a0a2e" stroke="#9b59b6" stroke-width="1.5"/><rect x="18" y="20" width="18" height="24" rx="3" fill="#110820"/><circle cx="28" cy="30" r="4" fill="#E24B4A" opacity=".9"/><circle cx="28" cy="30" r="2" fill="#f00"/><circle cx="62" cy="30" r="4" fill="#E24B4A" opacity=".9"/><circle cx="62" cy="30" r="2" fill="#f00"/><circle cx="45" cy="28" r="5" fill="#2a1a3e"/><circle cx="43" cy="27" r="1.5" fill="#9b59b6"/><circle cx="47" cy="27" r="1.5" fill="#9b59b6"/><rect x="42" y="30" width="6" height="2" rx="1" fill="#9b59b6"/><rect x="30" y="42" width="30" height="6" rx="3" fill="#9b59b6"/><rect x="56" y="43" width="14" height="4" rx="2" fill="#c39bd3"/><circle cx="69" cy="45" r="3" fill="#f00" opacity=".8" class="br"/><polygon points="30,20 34,12 38,20" fill="#9b59b6"/><polygon points="42,20 46,11 50,20" fill="#9b59b6"/><polygon points="54,20 58,12 62,20" fill="#9b59b6"/>`,
+  }[k];
+  const rc=k==='bd'?'#9b59b6':'#222', ac=k==='bd'?'#9b59b6':'#666';
+  return `<svg width="90" height="60" viewBox="0 0 90 60" xmlns="http://www.w3.org/2000/svg">
+    <line x1="22" y1="24" x2="5"  y2="9"  stroke="${ac}" stroke-width="3"/>
+    <line x1="68" y1="24" x2="85" y2="9"  stroke="${ac}" stroke-width="3"/>
+    <line x1="22" y1="42" x2="5"  y2="55" stroke="${ac}" stroke-width="3"/>
+    <line x1="68" y1="42" x2="85" y2="55" stroke="${ac}" stroke-width="3"/>
+    <circle cx="5"  cy="9"  r="4" fill="${rc}"/><circle cx="85" cy="9"  r="4" fill="${rc}"/>
+    <circle cx="5"  cy="55" r="4" fill="${rc}"/><circle cx="85" cy="55" r="4" fill="${rc}"/>
+    ${b}
+    <line x1="28" y1="44" x2="23" y2="56" stroke="#888" stroke-width="2"/>
+    <line x1="62" y1="44" x2="67" y2="56" stroke="#888" stroke-width="2"/>
+    <line x1="17" y1="56" x2="30" y2="56" stroke="#888" stroke-width="2"/>
+    <line x1="60" y1="56" x2="73" y2="56" stroke="#888" stroke-width="2"/>
+  </svg>`;
+}
+
+function makeCarSVG(k){
+  const svgs={
+    ft:`<svg width="114" height="50" viewBox="0 0 114 50" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="16" width="104" height="26" rx="3" fill="#E24B4A" stroke="#A32D2D" stroke-width="1"/><rect x="2" y="16" width="30" height="26" rx="2" fill="#c42020"/><rect x="66" y="20" width="18" height="12" rx="1" fill="#b5d4f4"/><rect x="18" y="20" width="16" height="12" rx="1" fill="#b5d4f4"/><circle cx="22" cy="44" r="5" fill="#222"/><circle cx="22" cy="44" r="2.5" fill="#777"/><circle cx="88" cy="44" r="5" fill="#222"/><circle cx="88" cy="44" r="2.5" fill="#777"/><rect x="0" y="14" width="20" height="4" rx="1" fill="#EF9F27"/><rect x="36" y="8" width="56" height="8" rx="3" fill="#333"/><rect x="38" y="9" width="12" height="6" rx="2" fill="#E24B4A" class="br"/><rect x="52" y="9" width="12" height="6" rx="2" fill="#E24B4A" class="br2"/><rect x="66" y="9" width="12" height="6" rx="2" fill="#E24B4A" class="br"/><rect x="80" y="9" width="10" height="6" rx="2" fill="#EF9F27" class="ba"/><rect x="36" y="6" width="60" height="4" rx="1" fill="#A32D2D" opacity=".7"/></svg>`,
+    am:`<svg width="96" height="48" viewBox="0 0 96 48" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="16" width="86" height="24" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/><rect x="2" y="16" width="28" height="24" rx="2" fill="#ddd"/><rect x="62" y="20" width="14" height="10" rx="1" fill="#b5d4f4"/><rect x="16" y="20" width="14" height="10" rx="1" fill="#b5d4f4"/><rect x="37" y="17" width="3" height="13" fill="#E24B4A"/><rect x="31" y="22" width="15" height="3" fill="#E24B4A"/><circle cx="18" cy="42" r="5" fill="#222"/><circle cx="18" cy="42" r="2.5" fill="#777"/><circle cx="74" cy="42" r="5" fill="#222"/><circle cx="74" cy="42" r="2.5" fill="#777"/><rect x="0" y="14" width="18" height="4" rx="1" fill="#FAC775"/><rect x="26" y="8" width="50" height="9" rx="3" fill="#333"/><rect x="28" y="9" width="14" height="7" rx="2" fill="#E24B4A" class="br"/><rect x="44" y="9" width="14" height="7" rx="2" fill="#EF9F27" class="ba"/><rect x="60" y="9" width="14" height="7" rx="2" fill="#E24B4A" class="br2"/></svg>`,
+    pc:`<svg width="94" height="48" viewBox="0 0 94 48" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="16" width="82" height="24" rx="3" fill="#185FA5" stroke="#0C447C" stroke-width="1"/><rect x="2" y="16" width="28" height="24" rx="2" fill="#0C447C"/><rect x="58" y="20" width="14" height="10" rx="1" fill="#b5d4f4"/><rect x="16" y="20" width="13" height="10" rx="1" fill="#b5d4f4"/><circle cx="18" cy="42" r="5" fill="#222"/><circle cx="18" cy="42" r="2.5" fill="#777"/><circle cx="68" cy="42" r="5" fill="#222"/><circle cx="68" cy="42" r="2.5" fill="#777"/><rect x="0" y="14" width="16" height="4" rx="1" fill="#B5D4F4"/><rect x="28" y="8" width="38" height="10" rx="3" fill="#222"/><rect x="30" y="9" width="16" height="8" rx="2" fill="#E24B4A" class="br"/><rect x="49" y="9" width="16" height="8" rx="2" fill="#378ADD" class="bb"/></svg>`,
+  };
+  return svgs[k];
+}
+
+function buildDroneEl(k){
+  const d=drones[k];
+  const wrap=document.createElement('div'); wrap.className='drone'; wrap.id='dr-'+k;
+  wrap.innerHTML=makeDroneSVG(k);
+  wrap.style.left=d.x+'px'; wrap.style.top=d.y+'px';
+  wrap.addEventListener('click',()=>pick(k));
+  const hw=document.createElement('div'); hw.className='hp-wrap'; hw.id='hw-'+k;
+  const hb=document.createElement('div'); hb.className='hp-bar'; hb.id='hb-'+k;
+  hb.style.cssText=`width:100%;background:${k==='bd'?'#9b59b6':'#4CAF50'};`;
+  hw.appendChild(hb); wrap.appendChild(hw);
+  [[5,9],[85,9],[5,55],[85,55]].forEach(([cx,cy],i)=>{
+    const b=document.createElement('div'); b.className='rotor-blade';
+    b.style.cssText=`left:${cx-13}px;top:${cy-2}px;background:${k==='bd'?'#9b59b6':'#333'};animation:sr .09s linear infinite ${i*.02}s;`;
+    wrap.appendChild(b);
+  });
+  skyEl.appendChild(wrap); d.el=wrap;
+}
+
+function buildCarEl(k){
+  const c=cars[k];
+  const wrap=document.createElement('div'); wrap.className='gcar'; wrap.id='gc-'+k;
+  wrap.innerHTML=makeCarSVG(k);
+  wrap.style.left=c.x+'px';
+  wrap.addEventListener('click',()=>pick(k));
+  const hw=document.createElement('div'); hw.className='hp-wrap'; hw.id='hw-'+k;
+  const hb=document.createElement('div'); hb.className='hp-bar'; hb.id='hb-'+k;
+  hb.style.cssText='width:100%;background:#4CAF50;';
+  hw.appendChild(hb); wrap.appendChild(hw);
+  skyEl.appendChild(wrap); c.el=wrap;
+}
+
+['fd','ad','pd','bd'].forEach(buildDroneEl);
+['ft','am','pc'].forEach(buildCarEl);
+
+const arr=document.createElement('div');
+arr.className='sel-arrow'; arr.style.display='none';
+skyEl.appendChild(arr);
+
+function updateArrow(){
+  const isDrone=['fd','ad','pd','bd'].includes(sel);
+  const isCar=['ft','am','pc'].includes(sel);
+  if(isDrone){
+    const d=drones[sel]; if(d.crashed){arr.style.display='none';return;}
+    arr.textContent=sel==='bd'?'👆':'▼'; arr.style.color=sel==='bd'?'#E24B4A':'#FAC775';
+    arr.style.left=(d.x+35)+'px'; arr.style.top=Math.max(2,d.y-24)+'px';
+  } else {
+    const c=cars[sel];
+    arr.textContent='▼'; arr.style.color='#FAC775';
+    arr.style.left=(c.x+c.w/2-9)+'px'; arr.style.top=(H()-75-68)+'px';
+  }
+  arr.style.display='block';
+}
+
+function pick(id){
+  if(['fd','ad','pd','bd'].includes(id)&&drones[id]?.crashed) return;
+  sel=id;
+  document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sb-'+id)?.classList.add('active');
+  if(id==='bd') stbar.textContent='BAD GUY MODE — SPACE fires laser+fireball at good drones!';
+  else if(['ft','am','pc'].includes(id)) stbar.textContent='Driving road vehicle — ←→ to drive · SPACE to shoot at Joel horizontally';
+  else stbar.textContent='Flying drone — ↑↓←→ · SPACE to shoot down at Joel';
+}
+
+function spawnExpl(x,y,col='#EF9F27'){
+  const e=document.createElement('div'); e.className='expl';
+  e.style.cssText=`left:${x-16}px;top:${y-16}px;width:32px;height:32px;background:${col};`;
+  skyEl.appendChild(e); setTimeout(()=>e.remove(),400);
+  for(let i=0;i<5;i++){
+    const s=document.createElement('div');
+    const ang=i*(Math.PI*2/5),dist=18+Math.random()*8;
+    s.style.cssText=`position:absolute;left:${x+Math.cos(ang)*dist-3}px;top:${y+Math.sin(ang)*dist-3}px;width:7px;height:7px;border-radius:50%;background:${col};pointer-events:none;z-index:20;animation:explode .4s ease-out forwards;`;
+    skyEl.appendChild(s); setTimeout(()=>s.remove(),400);
+  }
+}
+
+function flashHit(el){el.classList.remove('hit');void el.offsetWidth;el.classList.add('hit');setTimeout(()=>el.classList.remove('hit'),300);}
+
+function updateHpBar(id,cur,max){
+  const hb=document.getElementById('hb-'+id); if(!hb)return;
+  const pct=(cur/max)*100;
+  hb.style.width=pct+'%';
+  hb.style.background=id==='bd'?'#9b59b6':pct>60?'#4CAF50':pct>30?'#EF9F27':'#E24B4A';
+}
+
+function shoot(){
+  if(gameOver||shootCD>0)return;
+  const isDrone=['fd','ad','pd','bd'].includes(sel);
+  if(isDrone){const d=drones[sel];if(d.crashed)return;}
+  shootCD=sel==='bd'?26:16;
+  const isCar=['ft','am','pc'].includes(sel);
+
+  if(sel==='bd'){
+    const d=drones.bd, cx=d.x+45, cy=d.y+46;
+    // Find nearest good drone
+    let target=null,minD=9999;
+    ['fd','ad','pd'].forEach(k=>{if(!drones[k].crashed){const dd=Math.hypot(drones[k].x+45-cx,drones[k].y+30-cy);if(dd<minD){minD=dd;target=k;}}});
+    const tx=target?drones[target].x+45:cx+200, ty=target?drones[target].y+30:cy+100;
+    const dx=tx-cx,dy2=ty-cy,dist=Math.hypot(dx,dy2)||1;
+    // Laser line
+    const lEl=document.createElement('div'); lEl.className='laser';
+    lEl.style.cssText=`left:${cx}px;top:${cy}px;width:${dist}px;transform-origin:left center;transform:rotate(${Math.atan2(dy2,dx)*180/Math.PI}deg);animation:laserFade .25s ease-out forwards;`;
+    skyEl.appendChild(lEl); setTimeout(()=>lEl.remove(),250);
+    const p={type:'laser',x:cx,y:cy,vx:dx/dist*14,vy:dy2/dist*14,el:null,good:false};
+    const pel=document.createElement('div');
+    pel.style.cssText=`position:absolute;width:10px;height:10px;border-radius:50%;background:#f00;box-shadow:0 0 10px #f00;left:${cx}px;top:${cy}px;pointer-events:none;z-index:17;`;
+    skyEl.appendChild(pel); p.el=pel; projectiles.push(p);
+    // Fireball
+    const f={type:'fireball',x:cx,y:cy,vx:(Math.random()-.5)*5,vy:5+Math.random()*3,size:20,el:null,good:false};
+    const fel=document.createElement('div'); fel.className='fireball';
+    fel.style.cssText=`left:${cx}px;top:${cy}px;width:${f.size}px;height:${f.size}px;background:radial-gradient(circle,#FAC775,#EF9F27,#E24B4A);box-shadow:0 0 12px #EF9F27;`;
+    skyEl.appendChild(fel); f.el=fel; projectiles.push(f);
+  } else if(isCar){
+    const c=cars[sel]; const cx=c.x+c.w, cy=H()-75-20;
+    const dir=joelX>c.x?1:-1;
+    const p={type:'hbullet',x:cx,y:cy,vx:dir*11,vy:0,el:null,good:true};
+    const pel=document.createElement('div'); pel.className='hbullet';
+    const cols={ft:'#EF9F27',am:'#E24B4A',pc:'#B5D4F4'};
+    pel.style.cssText=`left:${cx}px;top:${cy}px;background:${cols[sel]};`;
+    skyEl.appendChild(pel); p.el=pel; projectiles.push(p);
+  } else {
+    const d=drones[sel]; const cx=d.x+45,cy=d.y+50;
+    const p={type:'bullet',x:cx,y:cy,vx:0,vy:10,el:null,good:true};
+    const pel=document.createElement('div'); pel.className='bullet';
+    const cols={fd:'#EF9F27',ad:'#E24B4A',pd:'#B5D4F4'};
+    pel.style.cssText=`left:${cx}px;top:${cy}px;background:${cols[sel]};`;
+    skyEl.appendChild(pel); p.el=pel; projectiles.push(p);
+  }
+}
+
+const joelQ=['Heh heh!','Run run!','Too slow!','Try harder!'];
+const joelHQ=['OW!','Hey!','Argh!','My leg!'];
+function joelSpeak(q){joelSpEl.textContent=q;joelSpEl.style.display='block';clearTimeout(joelSpEl._t);joelSpEl._t=setTimeout(()=>joelSpEl.style.display='none',1100);}
+
+function hitJoel(){
+  joelHp=Math.max(0,joelHp-1);
+  const pct=(joelHp/10)*100;
+  joelHbEl.style.width=pct+'%'; joelHbEl.style.background=pct>60?'#4CAF50':pct>30?'#EF9F27':'#E24B4A';
+  joelSpeak(joelHQ[Math.floor(Math.random()*joelHQ.length)]);
+  spawnExpl(joelX+16,H()-75-40,'#EF9F27');
+  if(joelHp<=0){joelEl.style.display='none';showMsg('&#127942; JOEL DEFEATED!','#27500A','#EAF3DE');}
+}
+
+function hitDroneUnit(k,dmg){
+  const d=drones[k]; if(d.crashed)return;
+  d.hp=Math.max(0,d.hp-dmg); updateHpBar(k,d.hp,d.maxHp); flashHit(d.el);
+  if(d.hp<=0){
+    d.crashed=true; d.el.style.transform='rotate(38deg)';
+    d.el.querySelectorAll('.rotor-blade').forEach(r=>r.style.animation='none');
+    spawnExpl(d.x+45,d.y+30,k==='bd'?'#9b59b6':'#EF9F27');
+    if(k==='bd'){showMsg('&#127942; BAD GUY DRONE DESTROYED!<br><small>Emergency fleet wins!</small>','#27500A','#EAF3DE');gameOver=true;return;}
+    const alive=['fd','ad','pd'].filter(k2=>!drones[k2].crashed);
+    if(alive.length===0&&Object.values(cars).every(c=>c.hp<=0)){showMsg('&#128165; FLEET DESTROYED!<br><small>Joel wins! Reset and try again.</small>','#701414','#FCEBEB');gameOver=true;return;}
+    if(sel===k){const a=[...alive,...Object.keys(cars).filter(k2=>cars[k2].hp>0)];if(a.length)pick(a[0]);}
+  }
+}
+
+function hitCar(k,dmg){
+  const c=cars[k]; c.hp=Math.max(0,c.hp-dmg); updateHpBar(k,c.hp,c.maxHp); flashHit(c.el);
+  if(c.hp<=0){
+    spawnExpl(c.x+c.w/2,H()-75-25,'#EF9F27');
+    c.el.style.transform='rotate(15deg)'; c.el.style.opacity='0.5';
+  }
+}
+
+function showMsg(html,bg,col){msgBox.innerHTML=html;msgBox.style.background=bg;msgBox.style.color=col;msgBox.style.display='block';setTimeout(()=>msgBox.style.display='none',4000);}
+
+function loop(){
+  frameCount++; if(shootCD>0)shootCD--;
+  const w=W(), gY=gndY();
+
+  // Fly drones
+  Object.keys(drones).forEach(k=>{
+    const d=drones[k]; if(d.crashed)return;
+    if(sel===k&&!gameOver){
+      if(keys['ArrowUp'])   d.vy-=ACCEL;
+      if(keys['ArrowDown']) d.vy+=ACCEL*.5;
+      if(keys['ArrowLeft']) d.vx-=ACCEL;
+      if(keys['ArrowRight'])d.vx+=ACCEL;
+    }
+    d.vy+=GRAV; d.vx*=FRIC; d.vy*=FRIC;
+    d.x+=d.vx; d.y+=d.vy;
+    if(d.y>=gY){if(d.vy>CVY)hitDroneUnit(k,d.hp);else{d.vy=0;d.vx*=.65;d.y=gY;}}
+    if(d.y<5){d.vy=0;d.y=5;}
+    d.x=clamp(d.x,0,w-90);
+    d.el.style.left=Math.round(d.x)+'px'; d.el.style.top=Math.round(d.y)+'px';
+  });
+
+  // Drive cars
+  Object.keys(cars).forEach(k=>{
+    const c=cars[k]; if(c.hp<=0)return;
+    if(sel===k&&!gameOver){
+      if(keys['ArrowLeft']) c.vx-=VACCEL;
+      if(keys['ArrowRight'])c.vx+=VACCEL;
+    }
+    c.vx*=VFRIC; c.x=clamp(c.x+c.vx,0,w-c.w);
+    c.el.style.left=Math.round(c.x)+'px';
+  });
+
+  // Joel
+  if(!gameOver&&joelEl.style.display!=='none'){
+    joelX+=joelVx;
+    if(joelX<5||joelX>w-46){joelVx*=-1;joelX=clamp(joelX,5,w-46);}
+    joelEl.style.left=joelX+'px';
+    if(frameCount%200===0)joelSpeak(joelQ[Math.floor(Math.random()*joelQ.length)]);
+  }
+
+  // Projectiles
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.type==='fireball')p.vy+=0.12;
+    p.el.style.left=Math.round(p.x)+'px'; p.el.style.top=Math.round(p.y)+'px';
+    let hit=false;
+    if(p.good){
+      // Hit Joel
+      const jT=H()-75-32-50, jB=H()-75-32;
+      if(p.x>joelX-4&&p.x<joelX+36&&p.y>jT&&p.y<jB&&joelEl.style.display!=='none'){hitJoel();hit=true;}
+    } else {
+      // Hit good drones
+      ['fd','ad','pd'].forEach(k=>{
+        if(hit||drones[k].crashed)return;
+        const d=drones[k];
+        if(p.x>d.x-5&&p.x<d.x+95&&p.y>d.y-5&&p.y<d.y+65){
+          spawnExpl(p.x,p.y,p.type==='laser'?'#f00':'#EF9F27');
+          hitDroneUnit(k,p.type==='fireball'?2:1); hit=true;
+        }
+      });
+      // Also hit good cars
+      if(!hit) Object.keys(cars).forEach(k=>{
+        if(hit||cars[k].hp<=0)return;
+        const c=cars[k];
+        if(p.x>c.x&&p.x<c.x+c.w&&p.y>H()-75-50&&p.y<H()-75){
+          spawnExpl(p.x,H()-75-20,p.type==='laser'?'#f00':'#EF9F27');
+          hitCar(k,p.type==='fireball'?2:1); hit=true;
+        }
+      });
+    }
+    if(hit||p.x<-30||p.x>w+30||p.y<-30||p.y>H()+30){p.el.remove();projectiles.splice(i,1);}
+  }
+
+  updateArrow();
+  requestAnimationFrame(loop);
+}
+
+pick('fd');
+requestAnimationFrame(loop);
+
+function resetAll(){
+  gameOver=false; joelHp=10; joelX=360; joelVx=1.4;
+  joelEl.style.display=''; joelHbEl.style.width='100%'; joelHbEl.style.background='#4CAF50';
+  joelSpEl.style.display='none'; msgBox.style.display='none';
+  projectiles.forEach(p=>p.el.remove()); projectiles.length=0;
+  document.querySelectorAll('[id^="dr-"],[id^="gc-"]').forEach(e=>e.remove());
+  document.querySelectorAll('.flame,.smoke,.expl').forEach(e=>e.remove());
+  Object.assign(drones.fd,{x:60, y:75, vx:0,vy:0,crashed:false,hp:5,el:null});
+  Object.assign(drones.ad,{x:250,y:115,vx:0,vy:0,crashed:false,hp:5,el:null});
+  Object.assign(drones.pd,{x:440,y:65, vx:0,vy:0,crashed:false,hp:5,el:null});
+  Object.assign(drones.bd,{x:320,y:45, vx:0,vy:0,crashed:false,hp:8,el:null});
+  Object.assign(cars.ft,{x:40, vx:0,hp:6,el:null});
+  Object.assign(cars.am,{x:260,vx:0,hp:6,el:null});
+  Object.assign(cars.pc,{x:480,vx:0,hp:6,el:null});
+  ['fd','ad','pd','bd'].forEach(buildDroneEl);
+  ['ft','am','pc'].forEach(buildCarEl);
+  pick('fd');
+}
+
+document.addEventListener('keydown',e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();keys[e.key]=true;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[e.key])?.classList.add('pressed');}
+  if(e.key===' '){e.preventDefault();shoot();}
+  const km={'1':'fd','2':'ad','3':'pd','4':'bd','5':'ft','6':'am','7':'pc'};
+  if(km[e.key])pick(km[e.key]);
+});
+document.addEventListener('keyup',e=>{keys[e.key]=false;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[e.key])?.classList.remove('pressed');});
+function hold(k){keys[k]=true;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[k])?.classList.add('pressed');}
+function rel(k){keys[k]=false;const m={ArrowUp:'dp-u',ArrowDown:'dp-d',ArrowLeft:'dp-l',ArrowRight:'dp-r'};document.getElementById(m[k])?.classList.remove('pressed');}
+[['dp-u','ArrowUp'],['dp-d','ArrowDown'],['dp-l','ArrowLeft'],['dp-r','ArrowRight']].forEach(([id,k])=>{
+  const b=document.getElementById(id);
+  b.addEventListener('mousedown',e=>{e.preventDefault();hold(k);});
+  b.addEventListener('touchstart',e=>{e.preventDefault();hold(k);});
+  b.addEventListener('mouseup',()=>rel(k));b.addEventListener('mouseleave',()=>rel(k));b.addEventListener('touchend',()=>rel(k));
+});
+</script>
